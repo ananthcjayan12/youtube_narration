@@ -1,0 +1,17 @@
+version: 3.0
+services:
+  - name: youtube-narration
+    dockerfile: Dockerfile
+    port: 8010
+    env:
+      - OPENAI_API_KEY
+      - STABILITY_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_REGION_NAME
+      - REPLICATE_API_TOKEN
+      - DJANGO_SECRET_KEY
+      - DJANGO_DEBUG=0
+    volumes:
+      - source: /path/to/media
+        target: /app/media

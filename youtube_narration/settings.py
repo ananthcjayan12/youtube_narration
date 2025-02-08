@@ -28,7 +28,8 @@ SECRET_KEY = "django-insecure-prkgjhrua=d_+ds!_0a#%s(gi=s-9!egc@8_z7uf_q+3^*3xth
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["127.0.0.1","aivideo.srshti.co.in","localhost"]
+CSRF_TRUSTED_ORIGINS = ["https://aivideo.srshti.co.in", "http://localhost:8000", "http://127.0.0.1:8000"]
 
 
 # Application definition
@@ -120,7 +121,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Additional locations of static files
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 STABILITY_KEY = os.getenv("STABILITY_KEY")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")

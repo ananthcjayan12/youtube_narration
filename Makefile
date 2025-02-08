@@ -1,10 +1,10 @@
-.PHONY: build run stop clean shell logs test migrate static help
+.PHONY: build run stop clean shell logs test migrate static help dev
 
 # Variables
 IMAGE_NAME = youtube-narration
 CONTAINER_NAME = youtube-narration-app
-PORT = 8000
-
+PORT_DOCKER = 8001
+PORT_SYSTEM = 8000
 # Colors for terminal output
 GREEN = \033[0;32m
 NC = \033[0m # No Color
@@ -30,11 +30,11 @@ run:
 	@echo "Running container..."
 	docker run -d \
 		--name $(CONTAINER_NAME) \
-		-p $(PORT):$(PORT) \
+		-p $(PORT_SYSTEM):$(PORT_DOCKER) \
 		-v $(PWD):/app \
 		--env-file .env \
 		$(IMAGE_NAME)
-	@echo "Container started at http://localhost:$(PORT)"
+	@echo "Container started at http://localhost:$(PORT_SYSTEM)"
 
 stop:
 	@echo "Stopping container..."
@@ -67,4 +67,24 @@ test:
 	@echo "Running tests..."
 	docker exec -it $(CONTAINER_NAME) python manage.py test
 
-dev: build run logs
+dev-run:
+	@echo "Running container in development mode..."
+	docker run -d \
+		--name $(CONTAINER_NAME) \
+		-p $(PORT):$(PORT) \
+		-v $(PWD):/app \
+		--env-file .env \
+		-e DJANGO_DEBUG=1 \
+		$(IMAGE_NAME) \
+		python manage.py runserver 0.0.0.0:$(PORT)
+
+dev: build dev-run logs
+
+# Add a command to watch for changes
+watch:
+	@echo "Watching for changes..."
+	watchmedo auto-restart \
+		--directory=./ \
+		--pattern=*.py \
+		--recursive \
+		-- python manage.py runserver 0.0.0.0:$(PORT)
