@@ -28,7 +28,7 @@ SECRET_KEY = "django-insecure-prkgjhrua=d_+ds!_0a#%s(gi=s-9!egc@8_z7uf_q+3^*3xth
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["127.0.0.1:8000","aivideo.srshti.co.in","localhost:8000"]
 
 
 # Application definition
