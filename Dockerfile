@@ -34,5 +34,8 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 ENV DJANGO_SETTINGS_MODULE=youtube_narration.settings
 
+# Run migrations
+RUN python manage.py migrate
+
 # Use gunicorn for production
 CMD gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
