@@ -150,3 +150,13 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 # Ensure the MEDIA_ROOT directory exists
 if not os.path.exists(MEDIA_ROOT):
     os.makedirs(MEDIA_ROOT)
+
+# SmartProxy Settings
+SMARTPROXY = {
+    'USERNAME': os.getenv('SMARTPROXY_USERNAME'),
+    'PASSWORD': os.getenv('SMARTPROXY_PASSWORD'),
+    'ENDPOINT': os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com'),
+    'PORT': os.getenv('SMARTPROXY_PORT', '7000'),
+    'MAX_RETRIES': 3,
+    'TIMEOUT': 30,
+}
