@@ -1,4 +1,4 @@
-.PHONY: build run stop clean shell logs test migrate static help
+.PHONY: build run stop clean shell logs test migrate static help dev
 
 # Variables
 IMAGE_NAME = youtube-narration
@@ -67,4 +67,24 @@ test:
 	@echo "Running tests..."
 	docker exec -it $(CONTAINER_NAME) python manage.py test
 
-dev: build run logs
+dev-run:
+	@echo "Running container in development mode..."
+	docker run -d \
+		--name $(CONTAINER_NAME) \
+		-p $(PORT):$(PORT) \
+		-v $(PWD):/app \
+		--env-file .env \
+		-e DJANGO_DEBUG=1 \
+		$(IMAGE_NAME) \
+		python manage.py runserver 0.0.0.0:$(PORT)
+
+dev: build dev-run logs
+
+# Add a command to watch for changes
+watch:
+	@echo "Watching for changes..."
+	watchmedo auto-restart \
+		--directory=./ \
+		--pattern=*.py \
+		--recursive \
+		-- python manage.py runserver 0.0.0.0:$(PORT)
