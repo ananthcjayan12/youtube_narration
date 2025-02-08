@@ -206,26 +206,7 @@ def get_smartproxy_session():
     
     return session
 
-def get_transcript_with_smartproxy(youtube_id):
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            session = get_smartproxy_session()
-            
-            # Patch the YouTubeTranscriptApi to use our session
-            YouTubeTranscriptApi.http_client = session
-            
-            transcript = YouTubeTranscriptApi.get_transcript(youtube_id)
-            return transcript
-            
-        except Exception as e:
-            print(f"Attempt {retry_count + 1} failed: {str(e)}")
-            retry_count += 1
-            if retry_count == max_retries:
-                raise Exception(f"Failed to get transcript after {max_retries} attempts: {str(e)}")
-    
+ 
 def get_or_create_transcription(youtube_id):
     try:
         project = Project.objects.get(youtube_id=youtube_id)
@@ -234,9 +215,18 @@ def get_or_create_transcription(youtube_id):
     except Project.DoesNotExist:
         project = None
 
+    username = os.getenv('SMARTPROXY_USERNAME')
+    password = os.getenv('SMARTPROXY_PASSWORD')
+    endpoint = os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com')
+    port = os.getenv('SMARTPROXY_PORT', '7000')
+
+    proxy_url = f"http://{username}:{password}@{endpoint}:{port}"
+    print(f"Using proxy: {proxy_url}")
+    
     try:
-        transcript = get_transcript_with_smartproxy(youtube_id)
+        transcript = YouTubeTranscriptApi.get_transcript(youtube_id, proxies={"http": proxy_url})
         transcription = " ".join([entry["text"] for entry in transcript])
+        print(transcription)
 
         if project:
             project.transcription = transcription
