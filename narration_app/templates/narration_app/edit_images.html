@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Edit Project - {{ project.title }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.min.css">
+<style>
+    .scene-slider {
+        width: 100%;
+        margin: 0 auto;
+    }
+    .scene-slide {
+        padding: 20px;
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        margin: 10px;
+    }
+    .scene-controls {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+    }
+    .slick-prev:before, .slick-next:before {
+        color: #007bff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Edit Project: {{ project.title }}</h1>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-4">
+            <button type="submit" name="create_all_images" class="btn btn-primary me-2">Create All Images</button>
+            <button type="submit" name="create_all_audios" class="btn btn-primary me-2">Create All Audios</button>
+            <button type="submit" name="generate_final_video" class="btn btn-success">Generate Final Video</button>
+        </div>
+
+        <div class="scene-slider">
+            {% for scene in scenes %}
+            <div class="scene-slide">
+                <h3 class="mb-3">Scene {{ scene.order }}</h3>
+                <div class="mb-3">
+                    <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
+                    <textarea name="narration_{{ scene.id }}" id="narration_{{ scene.id }}" class="form-control" rows="3">{{ scene.narration }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
+                    <textarea name="image_prompt_{{ scene.id }}" id="image_prompt_{{ scene.id }}" class="form-control" rows="3">{{ scene.image_prompt }}</textarea>
+                </div>
+                {% if scene.image %}
+                <div class="mb-3">
+                    <img src="{{ scene.image.url }}" alt="Scene {{ scene.order }}" class="img-fluid mb-2">
+                </div>
+                {% endif %}
+                <div class="scene-controls">
+                    <button type="submit" name="regenerate_{{ scene.id }}" class="btn btn-secondary">Regenerate Image</button>
+                    <div class="custom-file">
+                        <input type="file" name="custom_image_{{ scene.id }}" id="custom_image_{{ scene.id }}" class="custom-file-input">
+                        <label class="custom-file-label" for="custom_image_{{ scene.id }}">Upload Custom Image</label>
+                    </div>
+                    <button type="submit" name="generate_audio_{{ scene.id }}" class="btn btn-secondary">Generate Audio</button>
+                </div>
+                {% if scene.audio %}
+                <div class="mt-3">
+                    <label class="form-label">Preview Audio</label>
+                    <audio controls class="w-100">
+                        <source src="{{ scene.audio.url }}" type="audio/mpeg">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-4">Save Changes</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
+<script>
+    $(document).ready(function(){
+        $('.scene-slider').slick({
+            dots: true,
+            infinite: false,
+            speed: 300,
+            slidesToShow: 1,
+            adaptiveHeight: true
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block title %}Generate CSV - YouTube Narration Generator{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mt-4">Generate CSV for Unpublished Projects</h1>
+    <p>This will create a CSV file with YouTube titles split into three columns for unpublished projects.</p>
+    <a href="{% url 'generate_csv' %}" class="btn btn-primary">Download CSV</a>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Review Narration</h1>
+
+<h2>YouTube Details</h2>
+<p><strong>Title:</strong> {{ youtube_details.title }}</p>
+<p><strong>Description:</strong> {{ youtube_details.description }}</p>
+<p><strong>Thumbnail Title:</strong> {{ youtube_details.thumbnail_title }}</p>
+<p><strong>Thumbnail Prompt:</strong> {{ youtube_details.prompt }}</p>
+
+<h2>Scenes</h2>
+{% for scene in scenes %}
+    <h3>Scene {{ forloop.counter }}</h3>
+    <p><strong>Narration:</strong> {{ scene.narration }}</p>
+    <p><strong>Image Prompt:</strong> {{ scene.image_prompt }}</p>
+    <p><strong>Mood:</strong> {{ scene.mood }}</p>
+{% endfor %}
+
+<form method="post">
+    {% csrf_token %}
+    <h3>Regenerate Narration</h3>
+    <textarea name="custom_text" rows="4" cols="50">{{ custom_text|default:'' }}</textarea>
+    <button type="submit" name="regenerate">Regenerate</button>
+    <button type="submit" name="save">Save and Continue</button>
+</form>
+{% endblock %}

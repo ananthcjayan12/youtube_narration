@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block title %}Generate Video - {{ project.title }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Generate Video for {{ project.title }}</h1>
+<div class="card">
+    <div class="card-body">
+        <p class="card-text">Click the button below to generate the final video for your project.</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary">Generate Video</button>
+        </form>
+    </div>
+</div>
+
+{% if project.final_video %}
+<div class="mt-4">
+    <h2>Final Video</h2>
+    <video width="100%" controls>
+        <source src="{{ project.final_video.url }}" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Bulk Create Projects - YouTube Narration Generator{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Bulk Create Projects</h1>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="csv_file">Upload CSV file</label>
+        <input type="file" class="form-control-file" id="csv_file" name="csv_file" accept=".csv" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Upload and Process</button>
+</form>
+
+<div class="mt-4">
+    <h3>CSV Format</h3>
+    <p>Your CSV file should have two columns:</p>
+    <ol>
+        <li>YouTube URL</li>
+        <li>Project Title</li>
+    </ol>
+    <p>Example:</p>
+    <pre>
+https://www.youtube.com/watch?v=dQw4w9WgXcQ,My Awesome Video
+https://www.youtube.com/watch?v=9bZkp7q19f0,Gangnam Style
+    </pre>
+</div>
+{% endblock %}

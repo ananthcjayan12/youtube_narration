@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% load widget_tweaks %}
+
+{% block title %}Edit Narration - {{ project.title }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Edit Narration for {{ project.title }}</h1>
+<form method="post">
+    {% csrf_token %}
+    {% for scene in scenes %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Scene {{ scene.order }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
+                <textarea name="narration_{{ scene.id }}" id="narration_{{ scene.id }}" class="form-control" rows="5">{{ scene.narration }}</textarea>
+                
+
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+</form>
+{% endblock %}
