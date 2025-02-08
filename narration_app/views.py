@@ -220,11 +220,11 @@ def get_or_create_transcription(youtube_id):
     endpoint = os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com')
     port = os.getenv('SMARTPROXY_PORT', '7000')
 
-    proxy_url = f"http://{username}:{password}@{endpoint}:{port}"
+    proxy_url = f"https://{username}:{password}@{endpoint}:{port}"
     print(f"Using proxy: {proxy_url}")
     
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(youtube_id, proxies={"http": proxy_url})
+        transcript = YouTubeTranscriptApi.get_transcript(youtube_id, proxies={"https": proxy_url})
         transcription = " ".join([entry["text"] for entry in transcript])
         print(transcription)
 
