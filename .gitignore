@@ -86,3 +86,9 @@ cover/
 *.swp
 *.tmp
 *~ 
+
+# Static files
+staticfiles/
+*.pyc
+__pycache__/
+.env 

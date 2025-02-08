@@ -18,16 +18,16 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create necessary directories
+RUN mkdir -p static staticfiles media
+
 # Copy project files
 COPY . .
-
-# Create media directory
-RUN mkdir -p media
 
 # Collect static files
 RUN python manage.py collectstatic --noinput
 
-# Expose port
+# Expose ports
 EXPOSE 8000
 
 # Set environment variables

@@ -3,8 +3,8 @@
 # Variables
 IMAGE_NAME = youtube-narration
 CONTAINER_NAME = youtube-narration-app
-PORT = 8000
-
+PORT_DOCKER = 8001
+PORT_SYSTEM = 8000
 # Colors for terminal output
 GREEN = \033[0;32m
 NC = \033[0m # No Color
@@ -30,11 +30,11 @@ run:
 	@echo "Running container..."
 	docker run -d \
 		--name $(CONTAINER_NAME) \
-		-p $(PORT):$(PORT) \
+		-p $(PORT_SYSTEM):$(PORT_DOCKER) \
 		-v $(PWD):/app \
 		--env-file .env \
 		$(IMAGE_NAME)
-	@echo "Container started at http://localhost:$(PORT)"
+	@echo "Container started at http://localhost:$(PORT_SYSTEM)"
 
 stop:
 	@echo "Stopping container..."

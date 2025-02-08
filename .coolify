@@ -2,7 +2,7 @@ version: 3.0
 services:
   - name: youtube-narration
     dockerfile: Dockerfile
-    port: 8000
+    port: 8010
     env:
       - OPENAI_API_KEY
       - STABILITY_KEY
