@@ -215,18 +215,21 @@ def get_or_create_transcription(youtube_id):
     except Project.DoesNotExist:
         project = None
 
-    username = os.getenv('SMARTPROXY_USERNAME')
-    password = os.getenv('SMARTPROXY_PASSWORD')
-    endpoint = os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com')
-    port = os.getenv('SMARTPROXY_PORT', '7000')
-
-    proxy_url = f"https://{username}:{password}@{endpoint}:{port}"
-    print(f"Using proxy: {proxy_url}")
-    
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(youtube_id, proxies={"https": proxy_url})
-        transcription = " ".join([entry["text"] for entry in transcript])
-        print(transcription)
+        # Construct the YouTube URL from the ID
+        youtube_url = f"https://www.youtube.com/watch?v={youtube_id}"
+        # Use your custom endpoint
+        transcript_url = f"https://cjsubtitle.ananth-c-jayan.workers.dev/api/transcript?url={youtube_url}&output=json"
+        
+        response = requests.get(transcript_url)
+        response.raise_for_status()  # Raise exception for bad status codes
+        
+        transcript_data = response.json()
+        # Filter out [Music] entries and join the text
+        transcription = " ".join(
+            entry["text"] for entry in transcript_data 
+            if entry["text"] and entry["text"] != "[Music]"
+        )
 
         if project:
             project.transcription = transcription
