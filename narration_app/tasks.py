@@ -24,6 +24,10 @@ from .utils import (
     transcribe_audio_with_whisper,
     generate_voice,
 )
+from moviepy.config import change_settings
+
+# Set ImageMagick binary path
+change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
 @shared_task
 def create_narration_task(project_id):

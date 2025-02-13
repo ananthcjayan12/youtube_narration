@@ -7,7 +7,7 @@ services:
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      - ./media:/app/media
     ports:
       - "8020:8000"
     environment:
@@ -24,7 +24,7 @@ services:
     command: celery -A youtube_narration worker --loglevel=INFO --concurrency=2
     volumes:
       - .:/app
-      - media_volume:/app/media
+      - ./media:/app/media
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -54,5 +54,4 @@ services:
 
 volumes:
   static_volume:
-  media_volume:
   redis_data: 

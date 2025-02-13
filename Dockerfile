@@ -7,6 +7,11 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libgl1-mesa-glx \
+    # Add font packages
+    fonts-liberation \
+    fontconfig \
+    # Install ImageMagick
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -18,14 +23,17 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories
-RUN mkdir -p static staticfiles media
+# Create only static directories (remove media creation)
+RUN mkdir -p static staticfiles
 
 # Copy project files
 COPY . .
 
 # Collect static files
 RUN python manage.py collectstatic --noinput
+
+# Copy and set ImageMagick policy
+COPY policy.xml /etc/ImageMagick-6/policy.xml
 
 # Expose ports
 EXPOSE 8000
