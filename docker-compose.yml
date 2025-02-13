@@ -9,7 +9,7 @@ services:
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     ports:
-      - "8000:8000"
+      - "8090:8000"
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
