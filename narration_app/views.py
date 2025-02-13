@@ -317,29 +317,103 @@ def generate_voice(content, index, directory):
 
 
 
-def create_word_clip(word, start_time, duration, clip_width, clip_height, font_size=50):
-    word_clip = TextClip(
-        word,
-        fontsize=font_size,
-        color="white",
-        font="Poppins-Bold",
-    )
-    text_width, text_height = word_clip.size
-    background_clip = ColorClip(
-        size=(text_width + 30, text_height + 20), color=(0, 0, 0)
-    ).set_opacity(0.5)
-    word_clip = (
-        word_clip.set_position(("center", "center"))
+def create_word_clip(word, start_time, duration, clip_width, clip_height, font_size=None):
+    print(f"Creating word clip for: {word}")
+    print(f"Dimensions: {clip_width}x{clip_height}")
+    
+    # Adjust font size based on video format
+    if clip_height > clip_width:  # It's a reel
+        font_size = font_size or 80  # Slightly smaller font for reels
+        max_width = int(clip_width * 0.9)  # 90% of video width for reels
+    else:
+        font_size = font_size or 50
+        max_width = int(clip_width * 0.8)  # 80% of video width for landscape
+
+    try:
+        # Split long text into multiple lines if needed
+        words = word.split()
+        lines = []
+        current_line = []
+        
+        temp_clip = TextClip(
+            "test",
+            fontsize=font_size,
+            color="white",
+            font="Poppins-Bold",
+            stroke_color='black',
+            stroke_width=2,
+        )
+        
+        current_width = 0
+        for w in words:
+            test_clip = TextClip(
+                w,
+                fontsize=font_size,
+                color="white",
+                font="Poppins-Bold",
+                stroke_color='black',
+                stroke_width=2,
+            )
+            word_width = test_clip.w
+            test_clip.close()
+            
+            if current_width + word_width <= max_width:
+                current_line.append(w)
+                current_width += word_width + font_size//2  # Add space between words
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [w]
+                current_width = word_width
+        
+        if current_line:
+            lines.append(" ".join(current_line))
+        
+        # Create text clip for each line
+        text_clips = []
+        total_height = 0
+        for line in lines:
+            line_clip = TextClip(
+                line,
+                fontsize=font_size,
+                color="white",
+                font="Poppins-Bold",
+                stroke_color='black',
+                stroke_width=2,
+                method='label',
+            )
+            text_clips.append(line_clip)
+            total_height += line_clip.h + 10  # Add spacing between lines
+        
+        # Create background
+        bg_height = total_height + 40  # Add padding
+        bg_clip = ColorClip(
+            size=(clip_width, bg_height),
+            color=(0, 0, 0)
+        ).set_opacity(0.7)
+        
+        # Position text clips vertically
+        y_position = 20
+        positioned_clips = [bg_clip]
+        for text_clip in text_clips:
+            positioned_clip = text_clip.set_position(
+                ('center', y_position)
+            )
+            positioned_clips.append(positioned_clip)
+            y_position += text_clip.h + 10
+        
+        # Composite all clips
+        final_txt_clip = (CompositeVideoClip(
+            positioned_clips,
+            size=(clip_width, bg_height)
+        )
         .set_start(start_time)
-        .set_duration(duration)
-    )
-    background_clip = (
-        background_clip.set_position(("center", "center"))
-        .set_start(start_time)
-        .set_duration(duration)
-    )
-    combined_clip = CompositeVideoClip([background_clip, word_clip])
-    return combined_clip.crossfadein(0.1)
+        .set_duration(duration + 0.1)
+        .crossfadein(0.1))
+        
+        return final_txt_clip
+    except Exception as e:
+        print(f"Error creating word clip: {e}")
+        return None
 
 
 def resize_with_aspect_ratio(image_path, max_size):
@@ -688,25 +762,27 @@ class GenerateVideoView(View):
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
+        print(f"Generating video for project: {project.title}")
+        print(f"Video format: {project.video_format}")
+        
         project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
         os.makedirs(project_media_dir, exist_ok=True)
         scenes = project.scenes.all().order_by("order")
 
         width, height = get_image_dimensions(project.video_format)
+        print(f"Video dimensions: {width}x{height}")
+
         video_clips = []
         for i, scene in enumerate(scenes):
+            print(f"\nProcessing scene {i+1}")
+            
             audio_file_path = os.path.join(settings.MEDIA_ROOT, scene.audio.name)
             audio_clip = AudioFileClip(audio_file_path)
+            print(f"Audio duration: {audio_clip.duration}")
+            
             image_file_path = os.path.join(settings.MEDIA_ROOT, scene.image.name)
             image_clip = ImageClip(image_file_path).set_duration(audio_clip.duration)
             
-            # Adjust zoom effect based on format
-            zoom_factor = 1.02 if project.video_format == 'landscape' else 1.01
-            panned_zoomed_clip = image_clip.fx(
-                resize,
-                lambda t: 1 + zoom_factor * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
-            ).set_position(("center", "center"))
-
             transcription_path = os.path.join(
                 project_media_dir,
                 f"{os.path.splitext(audio_file_path)[0]}_transcription.json",
@@ -714,41 +790,89 @@ class GenerateVideoView(View):
             transcription = transcribe_audio_with_whisper(
                 audio_file_path, transcription_path
             )
+            print(f"Transcription length: {len(transcription)}")
 
-            # Adjust subtitle position for different formats
-            subtitle_y_position = height - 180 if project.video_format == 'landscape' else height - 300
-            
+            # Create base clip with correct dimensions
+            base_clip = ColorClip(size=(width, height), color=(0, 0, 0))
+            base_clip = base_clip.set_duration(audio_clip.duration)
+
+            # Position the image in the center of the frame
+            image_clip = image_clip.resize(width=width)
+            image_y_position = (height - image_clip.h) // 2
+            positioned_image = image_clip.set_position(('center', image_y_position))
+
+            if project.video_format == 'landscape':
+                # Subtle zoom effect for landscape videos
+                positioned_image = positioned_image.fx(
+                    resize,
+                    lambda t: 1 + 0.01 * t,
+                )
+
+            # Calculate subtitle position
+            if project.video_format == 'landscape':
+                subtitle_y_position = height - 180
+            else:
+                # For reels, position subtitles higher up
+                subtitle_y_position = int(height * 0.75)  # Moved up to 75% of height
+
+            # Modify the word grouping for reels
+            if project.video_format == 'reel':
+                words_per_group = 4  # Show fewer words at a time for reels
+            else:
+                words_per_group = 6  # More words for landscape
+
             subtitle_clips = []
-            for j in range(0, len(transcription), 4):
-                words = transcription[j : j + 4]
+            for j in range(0, len(transcription), words_per_group):
+                words = transcription[j : j + words_per_group]
                 word_text = " ".join([word_info["word"] for word_info in words])
                 start_time = words[0]["start"]
                 end_time = words[-1]["end"]
                 duration = end_time - start_time
+
                 word_clip = create_word_clip(
                     word_text,
                     start_time,
                     duration,
                     width,
                     height,
+                    font_size=80 if project.video_format == 'reel' else 50
                 )
-                word_clip = word_clip.set_position(
-                    ("center", subtitle_y_position)
-                )
-                subtitle_clips.append(word_clip)
 
-            video_clip = CompositeVideoClip(
-                [panned_zoomed_clip, *subtitle_clips]
-            ).set_audio(audio_clip)
+                if word_clip is not None:
+                    word_clip = word_clip.set_position(('center', subtitle_y_position))
+                    subtitle_clips.append(word_clip)
+                    print(f"Added subtitle: {word_text}")
+
+            # Combine all clips
+            clips_to_composite = [base_clip, positioned_image]
+            if subtitle_clips:
+                clips_to_composite.extend(subtitle_clips)
+
+            video_clip = (CompositeVideoClip(
+                clips_to_composite,
+                size=(width, height)
+            ).set_audio(audio_clip))
+
             video_clips.append(video_clip)
+            print(f"Scene {i+1} processing complete")
 
+        print("\nCombining all video clips...")
         final_video = concatenate_videoclips(video_clips, method="compose")
         output_video_name = f"final_video_{project.id}.mp4"
         output_video_path = os.path.join(project_media_dir, output_video_name)
-        final_video.write_videofile(output_video_path, codec="libx264", fps=10)
+        
+        print(f"Writing final video to: {output_video_path}")
+        final_video.write_videofile(
+            output_video_path,
+            codec="libx264",
+            fps=24,  # Increased FPS for smoother text
+            threads=4,
+            bitrate="8000k"  # Increased bitrate for better quality
+        )
 
         project.final_video = os.path.join(project.title, output_video_name)
         project.save()
+        print("Video generation complete!")
 
         return redirect("home")
 
