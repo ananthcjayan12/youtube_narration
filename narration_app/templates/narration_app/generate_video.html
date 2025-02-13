@@ -3,16 +3,36 @@
 {% block title %}Generate Video - {{ project.title }}{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Generate Video for {{ project.title }}</h1>
-<div class="card">
-    <div class="card-body">
-        <p class="card-text">Click the button below to generate the final video for your project.</p>
-        <form method="post">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-primary">Generate Video</button>
-        </form>
+<div class="container mt-4">
+    <h2>Generate Video</h2>
+    
+    <div class="alert alert-info" role="alert" id="taskStatus">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <span>Generating video... This may take several minutes. You will be redirected to the home page when complete.</span>
     </div>
+
+    <form method="post" id="generateVideoForm">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary" id="generateBtn">Start Video Generation</button>
+    </form>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const taskStatus = document.getElementById('taskStatus');
+    const generateBtn = document.getElementById('generateBtn');
+    const generateVideoForm = document.getElementById('generateVideoForm');
+
+    taskStatus.style.display = 'none';
+
+    generateVideoForm.addEventListener('submit', function() {
+        generateBtn.disabled = true;
+        taskStatus.style.display = 'block';
+    });
+});
+</script>
 
 {% if project.final_video %}
 <div class="mt-4">

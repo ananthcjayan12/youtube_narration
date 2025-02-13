@@ -34,9 +34,16 @@
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
         <div class="mb-4">
-            <button type="submit" name="create_all_images" class="btn btn-primary me-2">Create All Images</button>
-            <button type="submit" name="create_all_audios" class="btn btn-primary me-2">Create All Audios</button>
-            <button type="submit" name="generate_final_video" class="btn btn-success">Generate Final Video</button>
+            <button type="submit" name="create_all_images" class="btn btn-primary me-2" id="createAllImagesBtn">Create All Images</button>
+            <button type="submit" name="create_all_audios" class="btn btn-primary me-2" id="createAllAudiosBtn">Create All Audios</button>
+            <button type="submit" name="generate_final_video" class="btn btn-success" id="generateVideoBtn">Generate Final Video</button>
+        </div>
+
+        <div class="alert alert-info" role="alert" id="taskStatus" style="display: none;">
+            <div class="spinner-border spinner-border-sm" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span id="taskStatusText">Processing...</span>
         </div>
 
         <div class="scene-slider">
@@ -93,6 +100,31 @@
             speed: 300,
             slidesToShow: 1,
             adaptiveHeight: true
+        });
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const taskStatus = document.getElementById('taskStatus');
+        const taskStatusText = document.getElementById('taskStatusText');
+        const createAllImagesBtn = document.getElementById('createAllImagesBtn');
+        const createAllAudiosBtn = document.getElementById('createAllAudiosBtn');
+        const generateVideoBtn = document.getElementById('generateVideoBtn');
+
+        function showTaskStatus(message) {
+            taskStatusText.textContent = message;
+            taskStatus.style.display = 'block';
+        }
+
+        createAllImagesBtn.addEventListener('click', function() {
+            showTaskStatus('Generating images for all scenes... This may take a few minutes.');
+        });
+
+        createAllAudiosBtn.addEventListener('click', function() {
+            showTaskStatus('Generating audio for all scenes... This may take a few minutes.');
+        });
+
+        generateVideoBtn.addEventListener('click', function() {
+            showTaskStatus('Generating final video... This may take several minutes.');
         });
     });
 </script>

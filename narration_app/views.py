@@ -43,6 +43,12 @@ from django.http import HttpResponse
 from requests.auth import HTTPProxyAuth
 from urllib.parse import urlparse
 import random
+from .tasks import (
+    create_narration_task,
+    generate_scene_image_task,
+    generate_scene_audio_task,
+    generate_video_task,
+)
 
 class GenerateCSVView(View):
     def get(self, request):
@@ -631,9 +637,8 @@ class CreateNarrationView(View):
             project.youtube_id = youtube_id
             project.save()
 
-            transcription = get_or_create_transcription(youtube_id)
-
-            create_scenes_and_youtube_details(project, transcription)
+            # Start the Celery task
+            create_narration_task.delay(project.id)
 
             return redirect("edit_narration", project_id=project.id)
         return render(request, "narration_app/create_narration.html", {"form": form})
@@ -661,95 +666,38 @@ class EditImagesView(View):
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
-        os.makedirs(project_media_dir, exist_ok=True)
+        scenes = project.scenes.all()
 
-        width, height = get_image_dimensions(project.video_format)
-        aspect_ratio = "9:16" if project.video_format == 'reel' else "16:9"
+        if 'create_all_images' in request.POST:
+            for scene in scenes:
+                generate_scene_image_task.delay(scene.id, project.id)
+            return redirect("edit_images", project_id=project.id)
 
-        for scene in project.scenes.all():
+        if 'create_all_audios' in request.POST:
+            for scene in scenes:
+                generate_scene_audio_task.delay(scene.id, project.id)
+            return redirect("edit_images", project_id=project.id)
+
+        if 'generate_final_video' in request.POST:
+            return redirect('generate_video', project_id=project.id)
+
+        for scene in scenes:
             scene.narration = request.POST.get(f"narration_{scene.id}")
             scene.image_prompt = request.POST.get(f"image_prompt_{scene.id}")
-            if 'generate_final_video' in request.POST:
-                return redirect('generate_video', project_id=project.id)
+            
             if f"regenerate_{scene.id}" in request.POST:
-                output = replicate_run(
-                    "black-forest-labs/flux-schnell",
-                    input={
-                        "seed": 5,
-                        "prompt": scene.image_prompt,
-                        "num_outputs": 1,
-                        "aspect_ratio": aspect_ratio,
-                        "output_format": "png",
-                        "output_quality": 80,
-                    },
-                )
-                image_url = output[0]
-                image_data = requests.get(image_url).content
-                image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
-                save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (width, height))
-                scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
-
+                generate_scene_image_task.delay(scene.id, project.id)
+            
+            if f"generate_audio_{scene.id}" in request.POST:
+                generate_scene_audio_task.delay(scene.id, project.id)
+            
             if f"custom_image_{scene.id}" in request.FILES:
                 custom_image = request.FILES[f"custom_image_{scene.id}"]
                 custom_image_name = f"scene_{scene.id}_{custom_image.name}"
-                custom_image_path = os.path.join(project_media_dir, custom_image_name)
-                with open(custom_image_path, "wb") as f:
-                    for chunk in custom_image.chunks():
-                        f.write(chunk)
-                resize_with_aspect_ratio(custom_image_path, (width, height))
-                scene.image = os.path.join(project.title, custom_image_name)
-
-            if f"generate_audio_{scene.id}" in request.POST:
-                audio_file_name = f"scene_{scene.id}_audio.mp3"
-                audio_file_path = os.path.join(project_media_dir, audio_file_name)
-                
-                # Generate the audio file
-                generate_voice(scene.narration, scene.id, project_media_dir)
-                
-                # Check if the file exists
-                if os.path.exists(audio_file_path):
-                    scene.audio = os.path.join(project.title, audio_file_name)
-                else:
-                    print(f"Audio file not found: {audio_file_path}")
-
+                scene.image.save(custom_image_name, custom_image)
+            
             scene.save()
-        if 'create_all_images' in request.POST:
-            for scene in project.scenes.all():
-                output = replicate_run(
-                    "black-forest-labs/flux-schnell",
-                    input={
-                        "seed": 5,
-                        "prompt": scene.image_prompt,
-                        "num_outputs": 1,
-                        "aspect_ratio": aspect_ratio,
-                        "output_format": "png",
-                        "output_quality": 80,
-                    },
-                )
-                image_url = output[0]
-                image_data = requests.get(image_url).content
-                image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
-                save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (width, height))
-                scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
-                scene.save()
 
-        if 'create_all_audios' in request.POST:
-            for scene in project.scenes.all():
-                audio_file_name = f"scene_{scene.id}_audio.mp3"
-                audio_file_path = os.path.join(project_media_dir, audio_file_name)
-                
-                # Generate the audio file
-                generate_voice(scene.narration, scene.id, project_media_dir)
-                
-                # Check if the file exists
-                if os.path.exists(audio_file_path):
-                    scene.audio = os.path.join(project.title, audio_file_name)
-                    scene.save()
-                else:
-                    print(f"Audio file not found: {audio_file_path}")
         return redirect("edit_images", project_id=project.id)
 
 
@@ -762,118 +710,10 @@ class GenerateVideoView(View):
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        print(f"Generating video for project: {project.title}")
-        print(f"Video format: {project.video_format}")
         
-        project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
-        os.makedirs(project_media_dir, exist_ok=True)
-        scenes = project.scenes.all().order_by("order")
-
-        width, height = get_image_dimensions(project.video_format)
-        print(f"Video dimensions: {width}x{height}")
-
-        video_clips = []
-        for i, scene in enumerate(scenes):
-            print(f"\nProcessing scene {i+1}")
-            
-            audio_file_path = os.path.join(settings.MEDIA_ROOT, scene.audio.name)
-            audio_clip = AudioFileClip(audio_file_path)
-            print(f"Audio duration: {audio_clip.duration}")
-            
-            image_file_path = os.path.join(settings.MEDIA_ROOT, scene.image.name)
-            image_clip = ImageClip(image_file_path).set_duration(audio_clip.duration)
-            
-            transcription_path = os.path.join(
-                project_media_dir,
-                f"{os.path.splitext(audio_file_path)[0]}_transcription.json",
-            )
-            transcription = transcribe_audio_with_whisper(
-                audio_file_path, transcription_path
-            )
-            print(f"Transcription length: {len(transcription)}")
-
-            # Create base clip with correct dimensions
-            base_clip = ColorClip(size=(width, height), color=(0, 0, 0))
-            base_clip = base_clip.set_duration(audio_clip.duration)
-
-            # Position the image in the center of the frame
-            image_clip = image_clip.resize(width=width)
-            image_y_position = (height - image_clip.h) // 2
-            positioned_image = image_clip.set_position(('center', image_y_position))
-
-            if project.video_format == 'landscape':
-                # Subtle zoom effect for landscape videos
-                positioned_image = positioned_image.fx(
-                    resize,
-                    lambda t: 1 + 0.01 * t,
-                )
-
-            # Calculate subtitle position
-            if project.video_format == 'landscape':
-                subtitle_y_position = height - 180
-            else:
-                # For reels, position subtitles higher up
-                subtitle_y_position = int(height * 0.75)  # Moved up to 75% of height
-
-            # Modify the word grouping for reels
-            if project.video_format == 'reel':
-                words_per_group = 4  # Show fewer words at a time for reels
-            else:
-                words_per_group = 6  # More words for landscape
-
-            subtitle_clips = []
-            for j in range(0, len(transcription), words_per_group):
-                words = transcription[j : j + words_per_group]
-                word_text = " ".join([word_info["word"] for word_info in words])
-                start_time = words[0]["start"]
-                end_time = words[-1]["end"]
-                duration = end_time - start_time
-
-                word_clip = create_word_clip(
-                    word_text,
-                    start_time,
-                    duration,
-                    width,
-                    height,
-                    font_size=80 if project.video_format == 'reel' else 50
-                )
-
-                if word_clip is not None:
-                    word_clip = word_clip.set_position(('center', subtitle_y_position))
-                    subtitle_clips.append(word_clip)
-                    print(f"Added subtitle: {word_text}")
-
-            # Combine all clips
-            clips_to_composite = [base_clip, positioned_image]
-            if subtitle_clips:
-                clips_to_composite.extend(subtitle_clips)
-
-            video_clip = (CompositeVideoClip(
-                clips_to_composite,
-                size=(width, height)
-            ).set_audio(audio_clip))
-
-            video_clips.append(video_clip)
-            print(f"Scene {i+1} processing complete")
-
-        print("\nCombining all video clips...")
-        final_video = concatenate_videoclips(video_clips, method="compose")
-        output_video_name = f"final_video_{project.id}.mp4"
-        output_video_path = os.path.join(project_media_dir, output_video_name)
+        # Start the video generation task
+        generate_video_task.delay(project.id)
         
-        print(f"Writing final video to: {output_video_path}")
-        final_video.write_videofile(
-            output_video_path,
-            codec="libx264",
-            fps=24,  # Increased FPS for smoother text
-            threads=4,
-            bitrate="8000k"  # Increased bitrate for better quality
-        )
-
-        project.final_video = os.path.join(project.title, output_video_name)
-        project.save()
-        print("Video generation complete!")
-
         return redirect("home")
 
 
