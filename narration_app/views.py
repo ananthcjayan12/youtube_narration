@@ -48,6 +48,7 @@ from .tasks import (
     generate_scene_image_task,
     generate_scene_audio_task,
     generate_video_task,
+    test_celery,
 )
 
 class GenerateCSVView(View):
@@ -715,12 +716,55 @@ class GenerateVideoView(View):
         )
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
-        
-        # Start the video generation task
-        generate_video_task.delay(project.id)
-        
-        return redirect("home")
+        try:
+            print(f"Received POST request for project {project_id}")
+            project = get_object_or_404(Project, id=project_id)
+            
+            # First run a test task
+            print("Running test Celery task...")
+            test_task = test_celery.delay()
+            print(f"Test task ID: {test_task.id}")
+            
+            # Check if all scenes have both audio and image
+            scenes = project.scenes.all()
+            missing_assets = []
+            
+            print(f"Checking assets for {scenes.count()} scenes")
+            for scene in scenes:
+                if not scene.audio:
+                    print(f"Scene {scene.order} missing audio")
+                    missing_assets.append(f"Scene {scene.order} is missing audio")
+                if not scene.image:
+                    print(f"Scene {scene.order} missing image")
+                    missing_assets.append(f"Scene {scene.order} is missing image")
+            
+            if missing_assets:
+                print(f"Found missing assets: {missing_assets}")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Some scenes are missing assets',
+                    'details': missing_assets
+                }, status=400)
+            
+            print(f"Starting video generation for project {project_id}")
+            # Start the video generation task
+            task = generate_video_task.delay(project.id)
+            print(f"Video generation task started with ID: {task.id}")
+            
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Video generation started',
+                'task_id': task.id
+            })
+            
+        except Exception as e:
+            print(f"Error in GenerateVideoView: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e)
+            }, status=500)
 
 
 class DeleteProjectView(View):

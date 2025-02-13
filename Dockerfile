@@ -33,9 +33,17 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DJANGO_SETTINGS_MODULE=youtube_narration.settings
+ENV CELERY_BROKER_URL=redis://redis:6379/0
+ENV CELERY_RESULT_BACKEND=django-db
 
 # Run migrations
 RUN python manage.py migrate
 
-# Use gunicorn for production
-CMD gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
+# Create entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Default command (can be overridden in docker-compose.yml)
+CMD ["gunicorn", "youtube_narration.wsgi:application", "--bind", "0.0.0.0:8000"]

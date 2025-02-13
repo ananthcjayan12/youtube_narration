@@ -95,7 +95,7 @@
         <div class="mb-4">
             <button type="submit" name="create_all_images" class="btn btn-primary me-2" id="createAllImagesBtn">Create All Images</button>
             <button type="submit" name="create_all_audios" class="btn btn-primary me-2" id="createAllAudiosBtn">Create All Audios</button>
-            <button type="submit" name="generate_final_video" class="btn btn-success" id="generateVideoBtn">Generate Final Video</button>
+            <button type="button" class="btn btn-success" id="generateVideoBtn">Generate Final Video</button>
         </div>
 
         <div class="alert alert-info" role="alert" id="taskStatus" style="display: none;">
@@ -182,6 +182,42 @@
             speed: 300,
             slidesToShow: 1,
             adaptiveHeight: true
+        });
+
+        // Add click handler for generate video button
+        $('#generateVideoBtn').on('click', function() {
+            const button = $(this);
+            button.prop('disabled', true);
+            
+            // Get CSRF token
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            
+            // Make POST request to generate_video endpoint
+            $.ajax({
+                url: '/generate_video/{{ project.id }}/',
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                },
+                success: function(response) {
+                    if (response.status === 'success') {
+                        alert('Video generation started successfully!');
+                        // Optionally redirect to a status page
+                        window.location.href = '/generate_video/{{ project.id }}/';
+                    } else {
+                        alert('Error: ' + response.message);
+                        button.prop('disabled', false);
+                    }
+                },
+                error: function(xhr) {
+                    let errorMessage = 'An error occurred while generating the video.';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    alert(errorMessage);
+                    button.prop('disabled', false);
+                }
+            });
         });
     });
 
@@ -394,50 +430,6 @@
                         }
                     });
                 }, 2000);
-            });
-        });
-
-        // Handle generate final video
-        generateVideoBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            showTaskStatus('Generating final video... This may take several minutes.');
-            this.disabled = true;
-            updateProgress(0);
-
-            const formData = new FormData(form);
-            formData.append('generate_final_video', '');
-
-            fetch(form.action, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
-                }
-            }).then(() => {
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress = Math.min(progress + 1, 90);
-                    updateProgress(progress);
-                }, 2000);
-
-                const checkCompletion = setInterval(() => {
-                    fetch('/task-status/?type=final_video&project_id={{ project.id }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.completed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            updateProgress(100);
-                            showSuccess('Final video generated successfully!');
-                            setTimeout(() => location.reload(), 1500);
-                        } else if (data.failed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            showError('Failed to generate final video. Please try again.');
-                            this.disabled = false;
-                        }
-                    });
-                }, 3000);
             });
         });
     });

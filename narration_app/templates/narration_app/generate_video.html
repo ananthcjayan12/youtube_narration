@@ -6,11 +6,20 @@
 <div class="container mt-4">
     <h2>Generate Video</h2>
     
-    <div class="alert alert-info" role="alert" id="taskStatus">
+    <div class="alert alert-info" role="alert" id="taskStatus" style="display: none;">
         <div class="spinner-border spinner-border-sm" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <span>Generating video... This may take several minutes. You will be redirected to the home page when complete.</span>
+        <span id="statusText">Generating video... This may take several minutes.</span>
+        <div class="progress mt-2">
+            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <div class="alert alert-danger" role="alert" id="errorAlert" style="display: none;">
+        <h5>Error</h5>
+        <p id="errorMessage"></p>
+        <ul id="errorDetails"></ul>
     </div>
 
     <form method="post" id="generateVideoForm">
@@ -22,14 +31,82 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const taskStatus = document.getElementById('taskStatus');
+    const statusText = document.getElementById('statusText');
     const generateBtn = document.getElementById('generateBtn');
     const generateVideoForm = document.getElementById('generateVideoForm');
+    const errorAlert = document.getElementById('errorAlert');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorDetails = document.getElementById('errorDetails');
+    const progressBar = document.querySelector('.progress-bar');
 
-    taskStatus.style.display = 'none';
+    function showError(message, details = []) {
+        errorMessage.textContent = message;
+        errorDetails.innerHTML = '';
+        if (details.length > 0) {
+            details.forEach(detail => {
+                const li = document.createElement('li');
+                li.textContent = detail;
+                errorDetails.appendChild(li);
+            });
+        }
+        errorAlert.style.display = 'block';
+        generateBtn.disabled = false;
+        taskStatus.style.display = 'none';
+    }
 
-    generateVideoForm.addEventListener('submit', function() {
+    function checkTaskStatus(taskId) {
+        fetch(`/task-status/?type=final_video&project_id={{ project.id }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.completed) {
+                    statusText.textContent = 'Video generation completed successfully!';
+                    progressBar.style.width = '100%';
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                } else if (data.failed) {
+                    showError('Video generation failed. Please try again.');
+                } else {
+                    // Update progress
+                    let currentWidth = parseInt(progressBar.style.width) || 0;
+                    if (currentWidth < 90) {
+                        progressBar.style.width = (currentWidth + 1) + '%';
+                    }
+                    // Continue checking
+                    setTimeout(() => checkTaskStatus(taskId), 2000);
+                }
+            })
+            .catch(error => {
+                showError('Error checking task status: ' + error.message);
+            });
+    }
+
+    generateVideoForm.addEventListener('submit', function(e) {
+        e.preventDefault();
         generateBtn.disabled = true;
+        errorAlert.style.display = 'none';
         taskStatus.style.display = 'block';
+        progressBar.style.width = '0%';
+
+        fetch('', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                checkTaskStatus(data.task_id);
+            } else {
+                showError(data.message, data.details);
+            }
+        })
+        .catch(error => {
+            showError('Error starting video generation: ' + error.message);
+        });
     });
 });
 </script>
