@@ -640,8 +640,14 @@ class CreateNarrationView(View):
             # Start the Celery task
             create_narration_task.delay(project.id)
 
-            return redirect("edit_narration", project_id=project.id)
-        return render(request, "narration_app/create_narration.html", {"form": form})
+            return JsonResponse({
+                'project_id': project.id,
+                'status': 'success'
+            })
+        return JsonResponse({
+            'status': 'error',
+            'errors': form.errors
+        }, status=400)
 
 
 class EditNarrationView(View):
@@ -919,3 +925,53 @@ class UpdatePublishedStatusView(View):
         project.is_published = data.get('is_published', False)
         project.save()
         return JsonResponse({'status': 'success'})
+
+class TaskStatusView(View):
+    def get(self, request):
+        project_id = request.GET.get('project_id')
+        scene_id = request.GET.get('scene_id')
+        task_type = request.GET.get('type')
+
+        if project_id and task_type == 'narration':
+            project = get_object_or_404(Project, id=project_id)
+            return JsonResponse({
+                'status': project.narration_status,
+                'completed': project.narration_status == 'completed',
+                'failed': project.narration_status == 'failed'
+            })
+        elif scene_id and task_type in ['image', 'audio']:
+            scene = get_object_or_404(Scene, id=scene_id)
+            status = scene.image_status if task_type == 'image' else scene.audio_status
+            return JsonResponse({
+                'status': status,
+                'completed': status == 'completed',
+                'failed': status == 'failed'
+            })
+        elif task_type in ['all_images', 'all_audios', 'final_video']:
+            project_id = request.GET.get('project_id')
+            if not project_id:
+                return JsonResponse({'error': 'Project ID is required'}, status=400)
+            
+            project = get_object_or_404(Project, id=project_id)
+            scenes = project.scenes.all()
+            
+            if task_type == 'all_images':
+                statuses = [scene.image_status for scene in scenes]
+            elif task_type == 'all_audios':
+                statuses = [scene.audio_status for scene in scenes]
+            else:  # final_video
+                has_video = bool(project.final_video)
+                return JsonResponse({
+                    'completed': has_video,
+                    'failed': not has_video and any(scene.audio_status == 'failed' or scene.image_status == 'failed' for scene in scenes)
+                })
+            
+            all_completed = all(status == 'completed' for status in statuses)
+            any_failed = any(status == 'failed' for status in statuses)
+            
+            return JsonResponse({
+                'completed': all_completed,
+                'failed': any_failed
+            })
+        
+        return JsonResponse({'error': 'Invalid parameters'}, status=400)

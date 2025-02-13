@@ -22,8 +22,67 @@
         justify-content: space-between;
         margin-top: 20px;
     }
-    .slick-prev:before, .slick-next:before {
+    .slick-prev:before,
+    .slick-next:before {
         color: #007bff;
+    }
+    .image-container {
+        position: relative;
+    }
+    .image-status-overlay,
+    .audio-status-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        z-index: 1000;
+    }
+    .status-text {
+        margin-top: 10px;
+        color: white;
+        text-align: center;
+    }
+    .disabled {
+        opacity: 0.6;
+        pointer-events: none;
+    }
+    .progress-container {
+        width: 100%;
+        background-color: #f1f1f1;
+        border-radius: 4px;
+        margin-top: 10px;
+    }
+    .progress-bar {
+        width: 0%;
+        height: 20px;
+        background-color: #4CAF50;
+        border-radius: 4px;
+        transition: width 0.3s ease-in-out;
+    }
+    .error-message {
+        color: #dc3545;
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        padding: 10px;
+        border-radius: 4px;
+        margin-top: 10px;
+        display: none;
+    }
+    .success-message {
+        color: #155724;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        padding: 10px;
+        border-radius: 4px;
+        margin-top: 10px;
+        display: none;
     }
 </style>
 {% endblock %}
@@ -31,7 +90,7 @@
 {% block content %}
 <div class="container mt-4">
     <h1 class="mb-4">Edit Project: {{ project.title }}</h1>
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="edit-form">
         {% csrf_token %}
         <div class="mb-4">
             <button type="submit" name="create_all_images" class="btn btn-primary me-2" id="createAllImagesBtn">Create All Images</button>
@@ -44,11 +103,16 @@
                 <span class="visually-hidden">Loading...</span>
             </div>
             <span id="taskStatusText">Processing...</span>
+            <div class="progress-container">
+                <div class="progress-bar" id="taskProgress"></div>
+            </div>
         </div>
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
 
         <div class="scene-slider">
             {% for scene in scenes %}
-            <div class="scene-slide">
+            <div class="scene-slide" data-scene-id="{{ scene.id }}">
                 <h3 class="mb-3">Scene {{ scene.order }}</h3>
                 <div class="mb-3">
                     <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
@@ -58,18 +122,30 @@
                     <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
                     <textarea name="image_prompt_{{ scene.id }}" id="image_prompt_{{ scene.id }}" class="form-control" rows="3">{{ scene.image_prompt }}</textarea>
                 </div>
-                {% if scene.image %}
                 <div class="mb-3">
-                    <img src="{{ scene.image.url }}" alt="Scene {{ scene.order }}" class="img-fluid mb-2">
+                    <div class="image-container">
+                        {% if scene.image %}
+                        <img src="{{ scene.image.url }}" alt="Scene {{ scene.order }}" class="img-fluid mb-2">
+                        {% endif %}
+                        <div class="image-status-overlay" style="display: {% if scene.image_status == 'processing' %}flex{% else %}none{% endif %};">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="status-text">Generating image...</p>
+                        </div>
+                    </div>
                 </div>
-                {% endif %}
                 <div class="scene-controls">
-                    <button type="submit" name="regenerate_{{ scene.id }}" class="btn btn-secondary">Regenerate Image</button>
+                    <button type="submit" name="regenerate_{{ scene.id }}" class="btn btn-secondary regenerate-btn" {% if scene.image_status == 'processing' %}disabled{% endif %}>
+                        Regenerate Image
+                    </button>
                     <div class="custom-file">
-                        <input type="file" name="custom_image_{{ scene.id }}" id="custom_image_{{ scene.id }}" class="custom-file-input">
+                        <input type="file" name="custom_image_{{ scene.id }}" id="custom_image_{{ scene.id }}" class="custom-file-input" {% if scene.image_status == 'processing' %}disabled{% endif %}>
                         <label class="custom-file-label" for="custom_image_{{ scene.id }}">Upload Custom Image</label>
                     </div>
-                    <button type="submit" name="generate_audio_{{ scene.id }}" class="btn btn-secondary">Generate Audio</button>
+                    <button type="submit" name="generate_audio_{{ scene.id }}" class="btn btn-secondary generate-audio-btn" {% if scene.audio_status == 'processing' %}disabled{% endif %}>
+                        Generate Audio
+                    </button>
                 </div>
                 {% if scene.audio %}
                 <div class="mt-3">
@@ -80,6 +156,12 @@
                     </audio>
                 </div>
                 {% endif %}
+                <div class="audio-status-overlay" style="display: {% if scene.audio_status == 'processing' %}flex{% else %}none{% endif %};">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="status-text">Generating audio...</p>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -104,27 +186,259 @@
     });
 
     document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('edit-form');
         const taskStatus = document.getElementById('taskStatus');
         const taskStatusText = document.getElementById('taskStatusText');
         const createAllImagesBtn = document.getElementById('createAllImagesBtn');
         const createAllAudiosBtn = document.getElementById('createAllAudiosBtn');
         const generateVideoBtn = document.getElementById('generateVideoBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const taskProgress = document.getElementById('taskProgress');
 
         function showTaskStatus(message) {
             taskStatusText.textContent = message;
             taskStatus.style.display = 'block';
         }
 
-        createAllImagesBtn.addEventListener('click', function() {
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => {
+                errorMessage.style.display = 'none';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            setTimeout(() => {
+                successMessage.style.display = 'none';
+            }, 3000);
+        }
+
+        function updateProgress(progress) {
+            taskProgress.style.width = `${progress}%`;
+        }
+
+        function checkSceneStatus(sceneId, type) {
+            const scene = document.querySelector(`[data-scene-id="${sceneId}"]`);
+            const overlay = type === 'image' ? 
+                scene.querySelector('.image-status-overlay') : 
+                scene.querySelector('.audio-status-overlay');
+            const button = type === 'image' ? 
+                scene.querySelector('.regenerate-btn') : 
+                scene.querySelector('.generate-audio-btn');
+            let progress = 0;
+
+            const checkInterval = setInterval(() => {
+                fetch(`/task-status/?scene_id=${sceneId}&type=${type}&project_id={{ project.id }}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.completed) {
+                        clearInterval(checkInterval);
+                        overlay.style.display = 'none';
+                        button.disabled = false;
+                        updateProgress(100);
+                        showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} generated successfully!`);
+                        setTimeout(() => location.reload(), 1500);
+                    } else if (data.failed) {
+                        clearInterval(checkInterval);
+                        overlay.style.display = 'none';
+                        button.disabled = false;
+                        showError(`Failed to generate ${type}. Please try again.`);
+                    } else {
+                        progress = Math.min(progress + 5, 90);
+                        updateProgress(progress);
+                    }
+                })
+                .catch(error => {
+                    clearInterval(checkInterval);
+                    overlay.style.display = 'none';
+                    button.disabled = false;
+                    showError(`Error checking ${type} status: ${error.message}`);
+                });
+            }, 2000);
+        }
+
+        // Handle individual scene image generation
+        document.querySelectorAll('.regenerate-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sceneId = this.closest('.scene-slide').dataset.sceneId;
+                const overlay = this.closest('.scene-slide').querySelector('.image-status-overlay');
+                this.disabled = true;
+                overlay.style.display = 'flex';
+
+                const formData = new FormData(form);
+                formData.append('regenerate_' + sceneId, '');
+
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                }).then(() => {
+                    checkSceneStatus(sceneId, 'image');
+                });
+            });
+        });
+
+        // Handle individual scene audio generation
+        document.querySelectorAll('.generate-audio-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sceneId = this.closest('.scene-slide').dataset.sceneId;
+                const overlay = this.closest('.scene-slide').querySelector('.audio-status-overlay');
+                this.disabled = true;
+                overlay.style.display = 'flex';
+
+                const formData = new FormData(form);
+                formData.append('generate_audio_' + sceneId, '');
+
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                    }
+                }).then(() => {
+                    checkSceneStatus(sceneId, 'audio');
+                });
+            });
+        });
+
+        // Handle create all images
+        createAllImagesBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             showTaskStatus('Generating images for all scenes... This may take a few minutes.');
+            this.disabled = true;
+            updateProgress(0);
+
+            const formData = new FormData(form);
+            formData.append('create_all_images', '');
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                }
+            }).then(() => {
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress = Math.min(progress + 2, 90);
+                    updateProgress(progress);
+                }, 1000);
+
+                const checkCompletion = setInterval(() => {
+                    fetch('/task-status/?type=all_images&project_id={{ project.id }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.completed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            updateProgress(100);
+                            showSuccess('All images generated successfully!');
+                            setTimeout(() => location.reload(), 1500);
+                        } else if (data.failed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            showError('Failed to generate some images. Please try again.');
+                            this.disabled = false;
+                        }
+                    });
+                }, 2000);
+            });
         });
 
-        createAllAudiosBtn.addEventListener('click', function() {
+        // Handle create all audios
+        createAllAudiosBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             showTaskStatus('Generating audio for all scenes... This may take a few minutes.');
+            this.disabled = true;
+            updateProgress(0);
+
+            const formData = new FormData(form);
+            formData.append('create_all_audios', '');
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                }
+            }).then(() => {
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress = Math.min(progress + 2, 90);
+                    updateProgress(progress);
+                }, 1000);
+
+                const checkCompletion = setInterval(() => {
+                    fetch('/task-status/?type=all_audios&project_id={{ project.id }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.completed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            updateProgress(100);
+                            showSuccess('All audio files generated successfully!');
+                            setTimeout(() => location.reload(), 1500);
+                        } else if (data.failed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            showError('Failed to generate some audio files. Please try again.');
+                            this.disabled = false;
+                        }
+                    });
+                }, 2000);
+            });
         });
 
-        generateVideoBtn.addEventListener('click', function() {
+        // Handle generate final video
+        generateVideoBtn.addEventListener('click', function(e) {
+            e.preventDefault();
             showTaskStatus('Generating final video... This may take several minutes.');
+            this.disabled = true;
+            updateProgress(0);
+
+            const formData = new FormData(form);
+            formData.append('generate_final_video', '');
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                }
+            }).then(() => {
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress = Math.min(progress + 1, 90);
+                    updateProgress(progress);
+                }, 2000);
+
+                const checkCompletion = setInterval(() => {
+                    fetch('/task-status/?type=final_video&project_id={{ project.id }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.completed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            updateProgress(100);
+                            showSuccess('Final video generated successfully!');
+                            setTimeout(() => location.reload(), 1500);
+                        } else if (data.failed) {
+                            clearInterval(checkCompletion);
+                            clearInterval(progressInterval);
+                            showError('Failed to generate final video. Please try again.');
+                            this.disabled = false;
+                        }
+                    });
+                }, 3000);
+            });
         });
     });
 </script>

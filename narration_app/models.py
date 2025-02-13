@@ -26,6 +26,16 @@ class Project(models.Model):
         default='landscape',
         help_text="Choose video format: landscape (16:9) or reel (9:16)"
     )
+    narration_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
 
     def __str__(self):
         return self.title
@@ -58,6 +68,26 @@ class Scene(models.Model):
     mood = models.CharField(max_length=20, choices=MOOD_CHOICES, default="happy")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
+    image_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
+    audio_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
 
     class Meta:
         ordering = ["order"]

@@ -29,11 +29,19 @@ from .utils import (
 def create_narration_task(project_id):
     try:
         project = Project.objects.get(id=project_id)
+        project.narration_status = 'processing'
+        project.save()
+
         youtube_id = project.youtube_id
         transcription = get_or_create_transcription(youtube_id)
         create_scenes_and_youtube_details(project, transcription)
+
+        project.narration_status = 'completed'
+        project.save()
         return True
     except Exception as e:
+        project.narration_status = 'failed'
+        project.save()
         print(f"Error in create_narration_task: {str(e)}")
         return False
 
@@ -41,8 +49,10 @@ def create_narration_task(project_id):
 def generate_scene_image_task(scene_id, project_id):
     try:
         scene = Scene.objects.get(id=scene_id)
+        scene.image_status = 'processing'
+        scene.save()
+
         project = Project.objects.get(id=project_id)
-        
         project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
         os.makedirs(project_media_dir, exist_ok=True)
 
@@ -73,10 +83,13 @@ def generate_scene_image_task(scene_id, project_id):
         image.save(image_path)
         
         scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
+        scene.image_status = 'completed'
         scene.save()
         
         return True
     except Exception as e:
+        scene.image_status = 'failed'
+        scene.save()
         print(f"Error in generate_scene_image_task: {str(e)}")
         return False
 
@@ -84,8 +97,10 @@ def generate_scene_image_task(scene_id, project_id):
 def generate_scene_audio_task(scene_id, project_id):
     try:
         scene = Scene.objects.get(id=scene_id)
+        scene.audio_status = 'processing'
+        scene.save()
+
         project = Project.objects.get(id=project_id)
-        
         project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
         os.makedirs(project_media_dir, exist_ok=True)
         
@@ -97,10 +112,16 @@ def generate_scene_audio_task(scene_id, project_id):
         
         if os.path.exists(audio_file_path):
             scene.audio = os.path.join(project.title, audio_file_name)
+            scene.audio_status = 'completed'
             scene.save()
             return True
+
+        scene.audio_status = 'failed'
+        scene.save()
         return False
     except Exception as e:
+        scene.audio_status = 'failed'
+        scene.save()
         print(f"Error in generate_scene_audio_task: {str(e)}")
         return False
 
