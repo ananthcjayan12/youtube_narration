@@ -8,7 +8,7 @@ services:
       - .:/app
       - static_volume:/app/staticfiles
       - ./media:/app/media
-      - ./data/youtube_narration/db.sqlite3:/app/db.sqlite3
+      - ./data/youtube_narration:/app/data/youtube_narration
     ports:
       - "8020:8000"
     environment:
@@ -26,6 +26,7 @@ services:
     volumes:
       - .:/app
       - ./media:/app/media
+      - ./data/youtube_narration:/app/data/youtube_narration
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -39,6 +40,7 @@ services:
     command: celery -A youtube_narration beat --loglevel=INFO
     volumes:
       - .:/app
+      - ./data/youtube_narration:/app/data/youtube_narration
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
