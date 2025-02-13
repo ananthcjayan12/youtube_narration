@@ -8,6 +8,7 @@ services:
       - .:/app
       - static_volume:/app/staticfiles
       - ./media:/app/media
+      - ./data/youtube_narration/db.sqlite3:/app/db.sqlite3
     ports:
       - "8020:8000"
     environment:
