@@ -6,6 +6,11 @@ from django.utils import timezone
 
 
 class Project(models.Model):
+    VIDEO_FORMAT_CHOICES = [
+        ('landscape', 'Landscape (16:9)'),
+        ('reel', 'Reel (9:16)')
+    ]
+    
     title = models.CharField(max_length=200)
     youtube_url = models.URLField(help_text="Enter the full YouTube URL")
     youtube_id = models.CharField(max_length=20, blank=True, editable=False, default="")
@@ -15,6 +20,12 @@ class Project(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     tag = models.CharField(max_length=50, default="finance")
     is_published = models.BooleanField(default=False)  # New field for published status
+    video_format = models.CharField(
+        max_length=20,
+        choices=VIDEO_FORMAT_CHOICES,
+        default='landscape',
+        help_text="Choose video format: landscape (16:9) or reel (9:16)"
+    )
 
     def __str__(self):
         return self.title

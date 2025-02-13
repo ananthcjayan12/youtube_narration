@@ -87,14 +87,17 @@ class GenerateThumbnailView(View):
         youtube_details = project.youtube_details
 
         if youtube_details and youtube_details.thumbnail_prompt:
-            # Generate image using the thumbnail prompt
+            # Use project's video format for thumbnail
+            aspect_ratio = "9:16" if project.video_format == 'reel' else "16:9"
+            width, height = (1080, 1920) if project.video_format == 'reel' else (1280, 720)
+
             output = replicate_run(
                 "black-forest-labs/flux-schnell",
                 input={
                     "seed": 5,
                     "prompt": youtube_details.thumbnail_prompt,
                     "num_outputs": 1,
-                    "aspect_ratio": "16:9",
+                    "aspect_ratio": aspect_ratio,
                     "output_format": "png",
                     "output_quality": 80,
                 },
@@ -105,20 +108,25 @@ class GenerateThumbnailView(View):
             # Create a PIL Image from the image data
             image = Image.open(io.BytesIO(image_data))
 
-            # Resize the image to YouTube thumbnail dimensions (1280x720)
-            image = image.resize((1280, 720), Image.LANCZOS)
+            # Resize the image to appropriate dimensions
+            image = image.resize((width, height), Image.LANCZOS)
 
             # Add thumbnail title text to the image
             draw = ImageDraw.Draw(image)
-            # Use a default font if custom font is not available
             try:
                 font = ImageFont.truetype("path/to/your/font.ttf", 60)
             except IOError:
                 font = ImageFont.load_default()
             text = youtube_details.thumbnail_title
             text_width, text_height = draw.textsize(text, font=font)
-            position = ((1280 - text_width) // 2, 720 - text_height - 20)  # Center bottom
-            draw.text(position, text, font=font, fill=(255, 255, 255))  # White text
+            
+            # Adjust text position based on format
+            if project.video_format == 'reel':
+                position = ((width - text_width) // 2, height - text_height - 100)
+            else:
+                position = ((width - text_width) // 2, height - text_height - 20)
+                
+            draw.text(position, text, font=font, fill=(255, 255, 255))
 
             # Save the image to a buffer
             buffer = io.BytesIO()
@@ -582,6 +590,9 @@ class EditImagesView(View):
         project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
         os.makedirs(project_media_dir, exist_ok=True)
 
+        width, height = get_image_dimensions(project.video_format)
+        aspect_ratio = "9:16" if project.video_format == 'reel' else "16:9"
+
         for scene in project.scenes.all():
             scene.narration = request.POST.get(f"narration_{scene.id}")
             scene.image_prompt = request.POST.get(f"image_prompt_{scene.id}")
@@ -594,7 +605,7 @@ class EditImagesView(View):
                         "seed": 5,
                         "prompt": scene.image_prompt,
                         "num_outputs": 1,
-                        "aspect_ratio": "16:9",
+                        "aspect_ratio": aspect_ratio,
                         "output_format": "png",
                         "output_quality": 80,
                     },
@@ -603,7 +614,7 @@ class EditImagesView(View):
                 image_data = requests.get(image_url).content
                 image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
                 save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (1920, 1080))
+                resize_with_aspect_ratio(image_path, (width, height))
                 scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
 
             if f"custom_image_{scene.id}" in request.FILES:
@@ -613,7 +624,7 @@ class EditImagesView(View):
                 with open(custom_image_path, "wb") as f:
                     for chunk in custom_image.chunks():
                         f.write(chunk)
-                resize_with_aspect_ratio(custom_image_path, (1920, 1080))
+                resize_with_aspect_ratio(custom_image_path, (width, height))
                 scene.image = os.path.join(project.title, custom_image_name)
 
             if f"generate_audio_{scene.id}" in request.POST:
@@ -638,7 +649,7 @@ class EditImagesView(View):
                         "seed": 5,
                         "prompt": scene.image_prompt,
                         "num_outputs": 1,
-                        "aspect_ratio": "16:9",
+                        "aspect_ratio": aspect_ratio,
                         "output_format": "png",
                         "output_quality": 80,
                     },
@@ -647,7 +658,7 @@ class EditImagesView(View):
                 image_data = requests.get(image_url).content
                 image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
                 save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (1920, 1080))
+                resize_with_aspect_ratio(image_path, (width, height))
                 scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
                 scene.save()
 
@@ -681,17 +692,19 @@ class GenerateVideoView(View):
         os.makedirs(project_media_dir, exist_ok=True)
         scenes = project.scenes.all().order_by("order")
 
+        width, height = get_image_dimensions(project.video_format)
         video_clips = []
         for i, scene in enumerate(scenes):
             audio_file_path = os.path.join(settings.MEDIA_ROOT, scene.audio.name)
             audio_clip = AudioFileClip(audio_file_path)
             image_file_path = os.path.join(settings.MEDIA_ROOT, scene.image.name)
             image_clip = ImageClip(image_file_path).set_duration(audio_clip.duration)
-            image_clip = image_clip.resize(height=1080)  # Assuming 1080p video
             
+            # Adjust zoom effect based on format
+            zoom_factor = 1.02 if project.video_format == 'landscape' else 1.01
             panned_zoomed_clip = image_clip.fx(
                 resize,
-                lambda t: 1 + 0.02 * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
+                lambda t: 1 + zoom_factor * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
             ).set_position(("center", "center"))
 
             transcription_path = os.path.join(
@@ -702,6 +715,9 @@ class GenerateVideoView(View):
                 audio_file_path, transcription_path
             )
 
+            # Adjust subtitle position for different formats
+            subtitle_y_position = height - 180 if project.video_format == 'landscape' else height - 300
+            
             subtitle_clips = []
             for j in range(0, len(transcription), 4):
                 words = transcription[j : j + 4]
@@ -713,11 +729,11 @@ class GenerateVideoView(View):
                     word_text,
                     start_time,
                     duration,
-                    panned_zoomed_clip.w,
-                    panned_zoomed_clip.h,
+                    width,
+                    height,
                 )
                 word_clip = word_clip.set_position(
-                    ("center", panned_zoomed_clip.h - 180)
+                    ("center", subtitle_y_position)
                 )
                 subtitle_clips.append(word_clip)
 
@@ -925,51 +941,13 @@ class CreateCustomNarrationView(FormView):
 
         self.success_url = self.success_url.format(project_id=project.id)
         return super().form_valid(form)        # Add this new view
-class GenerateThumbnailView(View):
-    def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
-        youtube_details = project.youtube_details
 
-        if youtube_details and youtube_details.thumbnail_prompt:
-            # Generate image using the thumbnail prompt
-            output = replicate_run(
-                "black-forest-labs/flux-schnell",
-                input={
-                    "seed": 5,
-                    "prompt": youtube_details.thumbnail_prompt,
-                    "num_outputs": 1,
-                    "aspect_ratio": "16:9",
-                    "output_format": "png",
-                    "output_quality": 80,
-                },
-            )
-            image_url = output[0]
-            image_data = requests.get(image_url).content
+# Add this helper function at the top with other utility functions
+def get_image_dimensions(video_format):
+    if video_format == 'reel':
+        return (1080, 1920)  # Standard Reel dimensions
+    return (1920, 1080)  # Standard landscape dimensions
 
-            # Create a PIL Image from the image data
-            image = Image.open(io.BytesIO(image_data))
-
-            # Resize the image to YouTube thumbnail dimensions (1280x720)
-            image = image.resize((1280, 720), Image.LANCZOS)
-
-            # Add thumbnail title text to the image
-            draw = ImageDraw.Draw(image)
-            # font = ImageFont.truetype("path/to/your/font.ttf", 60)  # Adjust font and size as needed
-            text = youtube_details.thumbnail_title
-            text_width, text_height = draw.textsize(text)
-            position = ((1280 - text_width) // 2, 720 - text_height - 20)  # Center bottom
-            draw.text(position, text, fill=(255, 255, 255))  # White text
-
-            # Save the image to a buffer
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-
-            # Save the image to the YouTubeDetails model
-            youtube_details.thumbnail.save(f"thumbnail_{project.id}.png", ContentFile(buffer.getvalue()))
-            youtube_details.save()
-
-        return redirect('home')
 class UpdatePublishedStatusView(View):
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)

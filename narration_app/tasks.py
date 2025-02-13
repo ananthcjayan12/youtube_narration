@@ -54,13 +54,16 @@ def process_youtube_url(youtube_url, title):
     
     # Generate images for all scenes
     for scene in project.scenes.all():
+        width, height = get_image_dimensions(project.video_format)
+        aspect_ratio = "9:16" if project.video_format == 'reel' else "16:9"
+        
         output = replicate_run(
             "black-forest-labs/flux-schnell",
             input={
                 "seed": 5,
                 "prompt": scene.image_prompt,
                 "num_outputs": 1,
-                "aspect_ratio": "16:9",
+                "aspect_ratio": aspect_ratio,
                 "output_format": "png",
                 "output_quality": 80,
             },
@@ -69,14 +72,20 @@ def process_youtube_url(youtube_url, title):
         image_data = requests.get(image_url).content
         image_path = os.path.join(settings.MEDIA_ROOT, project.title, f"scene_{scene.id}.png")
         save_image(image_data, image_path)
-        resize_with_aspect_ratio(image_path, (1920, 1080))
+        resize_with_aspect_ratio(image_path, (width, height))
         scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
         scene.save()
     
     # Generate final video
     generate_video(project)
 
+def get_image_dimensions(video_format):
+    if video_format == 'reel':
+        return (1080, 1920)  # Standard Reel dimensions
+    return (1920, 1080)  # Standard landscape dimensions
+
 def generate_video(project):
+    width, height = get_image_dimensions(project.video_format)
     project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
     os.makedirs(project_media_dir, exist_ok=True)
 
@@ -87,9 +96,11 @@ def generate_video(project):
         image_file_path = os.path.join(settings.MEDIA_ROOT, scene.image.name)
         image_clip = ImageClip(image_file_path).set_duration(audio_clip.duration)
         
+        # Adjust zoom effect based on format
+        zoom_factor = 1.02 if project.video_format == 'landscape' else 1.01
         panned_zoomed_clip = image_clip.fx(
             resize,
-            lambda t: 1 + 0.02 * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
+            lambda t: 1 + zoom_factor * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
         ).set_position(("center", "center"))
 
         transcription_path = os.path.join(
@@ -100,6 +111,10 @@ def generate_video(project):
             audio_file_path, transcription_path
         )
 
+        # Adjust subtitle position for different formats
+        subtitle_y_position = height - 180 if project.video_format == 'landscape' else height - 300
+        
+        # Create word clips with adjusted positioning
         subtitle_clips = []
         for j in range(0, len(transcription), 2):
             words = transcription[j : j + 2]
@@ -111,11 +126,11 @@ def generate_video(project):
                 word_text,
                 start_time,
                 duration,
-                panned_zoomed_clip.w,
-                panned_zoomed_clip.h,
+                width,
+                height,
             )
             word_clip = word_clip.set_position(
-                ("center", panned_zoomed_clip.h - 180)
+                ("center", subtitle_y_position)
             )
             subtitle_clips.append(word_clip)
 
