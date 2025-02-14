@@ -52,6 +52,8 @@ from .tasks import (
 )
 from celery.result import AsyncResult
 
+
+#sample view
 class GenerateCSVView(View):
     def get(self, request):
         # Filter unpublished projects
