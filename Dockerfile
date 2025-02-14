@@ -23,8 +23,8 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create only static directories (remove media creation)
-RUN mkdir -p static staticfiles
+# Create necessary directories
+RUN mkdir -p /app/data/ /app/static /app/staticfiles
 
 # Copy project files
 COPY . .
@@ -44,8 +44,8 @@ ENV DJANGO_SETTINGS_MODULE=youtube_narration.settings
 ENV CELERY_BROKER_URL=redis://redis:6379/0
 ENV CELERY_RESULT_BACKEND=django-db
 
-# Run migrations
-RUN python manage.py migrate
+# Remove or comment out the migration command since the database directory doesn't exist yet
+# RUN python manage.py migrate
 
 # Create entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
