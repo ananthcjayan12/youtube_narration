@@ -1,4 +1,4 @@
-.PHONY: build run stop clean shell logs test migrate static help dev
+.PHONY: build up down restart logs shell migrate static test clean help stop
 
 # Variables
 IMAGE_NAME = youtube-narration
@@ -11,74 +11,91 @@ NC = \033[0m # No Color
 
 help:
 	@echo "Available commands:"
-	@echo "${GREEN}make build${NC}      - Build Docker image"
-	@echo "${GREEN}make run${NC}        - Run Docker container"
-	@echo "${GREEN}make stop${NC}       - Stop Docker container"
-	@echo "${GREEN}make restart${NC}    - Restart Docker container"
-	@echo "${GREEN}make shell${NC}      - Access container shell"
-	@echo "${GREEN}make logs${NC}       - View container logs"
-	@echo "${GREEN}make clean${NC}      - Remove container and image"
-	@echo "${GREEN}make migrate${NC}    - Run Django migrations"
-	@echo "${GREEN}make static${NC}     - Collect static files"
-	@echo "${GREEN}make test${NC}       - Run tests"
+	@echo "  make build      - Build all Docker images"
+	@echo "  make up         - Start all containers in detached mode"
+	@echo "  make stop       - Stop running containers without removing them"
+	@echo "  make down       - Stop and remove all containers"
+	@echo "  make restart    - Restart all containers"
+	@echo "  make logs       - View logs from all containers"
+	@echo "  make shell      - Open a shell in the web container"
+	@echo "  make migrate    - Run Django migrations"
+	@echo "  make static     - Collect static files"
+	@echo "  make test       - Run Django tests"
+	@echo "  make clean      - Remove all containers, volumes, and images"
 
 build:
-	@echo "Building Docker image..."
-	docker build -t $(IMAGE_NAME) .
+	docker-compose build
 
-run:
-	@echo "Running container..."
-	docker run -d \
-		--name $(CONTAINER_NAME) \
-		-p $(PORT_SYSTEM):$(PORT_DOCKER) \
-		-v $(PWD):/app \
-		--env-file .env \
-		$(IMAGE_NAME)
-	@echo "Container started at http://localhost:$(PORT_SYSTEM)"
+up:
+	docker-compose up -d
 
 stop:
-	@echo "Stopping container..."
-	docker stop $(CONTAINER_NAME) || true
-	docker rm $(CONTAINER_NAME) || true
+	docker-compose stop
 
-restart: stop run
+down:
+	docker-compose down
 
-shell:
-	@echo "Accessing container shell..."
-	docker exec -it $(CONTAINER_NAME) bash
+restart:
+	docker-compose restart
 
 logs:
-	@echo "Viewing logs..."
-	docker logs -f $(CONTAINER_NAME)
+	docker-compose logs -f
 
-clean: stop
-	@echo "Removing image..."
-	docker rmi $(IMAGE_NAME) || true
+shell:
+	docker-compose exec web python manage.py shell
 
 migrate:
-	@echo "Running migrations..."
-	docker exec -it $(CONTAINER_NAME) python manage.py migrate
+	docker-compose exec web python manage.py migrate
 
 static:
-	@echo "Collecting static files..."
-	docker exec -it $(CONTAINER_NAME) python manage.py collectstatic --noinput
+	docker-compose exec web python manage.py collectstatic --noinput
 
 test:
-	@echo "Running tests..."
-	docker exec -it $(CONTAINER_NAME) python manage.py test
+	docker-compose exec web python manage.py test
 
-dev-run:
-	@echo "Running container in development mode..."
-	docker run -d \
-		--name $(CONTAINER_NAME) \
-		-p $(PORT):$(PORT) \
-		-v $(PWD):/app \
-		--env-file .env \
-		-e DJANGO_DEBUG=1 \
-		$(IMAGE_NAME) \
-		python manage.py runserver 0.0.0.0:$(PORT)
+clean:
+	docker-compose down -v --rmi all
 
-dev: build dev-run logs
+# Development specific commands
+dev-build:
+	docker-compose -f docker-compose.yml -f docker-compose.dev.yml build
+
+dev-up:
+	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+dev-down:
+	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+
+# Production specific commands
+prod-build:
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+
+prod-up:
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+prod-down:
+	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+# Celery specific commands
+celery-logs:
+	docker-compose logs -f celery
+
+celery-restart:
+	docker-compose restart celery celery-beat
+
+# Redis specific commands
+redis-cli:
+	docker-compose exec redis redis-cli
+
+redis-monitor:
+	docker-compose exec redis redis-cli monitor
+
+# Database backup and restore
+backup:
+	docker-compose exec web python manage.py dumpdata > backup.json
+
+restore:
+	docker-compose exec web python manage.py loaddata backup.json
 
 # Add a command to watch for changes
 watch:

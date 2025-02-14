@@ -5,7 +5,7 @@ from .models import Project, Scene, YouTubeDetails
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
-        fields = ["title", "youtube_url"]
+        fields = ["title", "youtube_url", "video_format"]
 
 
 class SceneForm(forms.ModelForm):

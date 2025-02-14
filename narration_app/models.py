@@ -6,15 +6,31 @@ from django.utils import timezone
 
 
 class Project(models.Model):
+    VIDEO_FORMAT_CHOICES = [
+        ('reel', 'Instagram Reel (9:16)'),
+        ('landscape', 'Landscape (16:9)'),
+    ]
+    
     title = models.CharField(max_length=200)
-    youtube_url = models.URLField(help_text="Enter the full YouTube URL")
-    youtube_id = models.CharField(max_length=20, blank=True, editable=False, default="")
-    transcription = models.TextField(blank=True, default="")
-    final_video = models.FileField(upload_to="videos/", blank=True, null=True)
-    created_at = models.DateTimeField(default=timezone.now)
+    youtube_url = models.URLField()
+    youtube_id = models.CharField(max_length=20, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    tag = models.CharField(max_length=50, default="finance")
-    is_published = models.BooleanField(default=False)  # New field for published status
+    video_format = models.CharField(max_length=20, choices=VIDEO_FORMAT_CHOICES, default='reel')
+    transcription = models.TextField(blank=True)
+    final_video = models.FileField(upload_to='videos/', null=True, blank=True)
+    narration_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed'),
+        ],
+        default='pending'
+    )
+    task_id = models.CharField(max_length=100, blank=True, null=True)
+    is_published = models.BooleanField(default=False)
 
     def __str__(self):
         return self.title
@@ -39,13 +55,34 @@ class Scene(models.Model):
     project = models.ForeignKey(
         Project, related_name="scenes", on_delete=models.CASCADE
     )
-    order = models.PositiveIntegerField(default=0)
+    order = models.IntegerField()
     narration = models.TextField()
-    image_prompt = models.TextField()
+    image_prompt = models.TextField(blank=True)
     image = models.ImageField(upload_to='scenes/', null=True, blank=True)
-    audio = models.FileField(upload_to='scenes/audio/', null=True, blank=True)
+    audio = models.FileField(upload_to='audio/', null=True, blank=True)
     mood = models.CharField(max_length=20, choices=MOOD_CHOICES, default="happy")
-    created_at = models.DateTimeField(default=timezone.now)
+    image_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed'),
+        ],
+        default='pending'
+    )
+    audio_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed'),
+        ],
+        default='pending'
+    )
+    task_id = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -53,7 +90,7 @@ class Scene(models.Model):
         unique_together = ["project", "order"]
 
     def __str__(self):
-        return f"Scene {self.order} of {self.project.title}"
+        return f"{self.project.title} - Scene {self.order}"
 
     def save(self, *args, **kwargs):
         if self.order == 0:
@@ -70,11 +107,11 @@ class YouTubeDetails(models.Model):
     )
     title = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
-    thumbnail_title = models.CharField(max_length=100)
-    thumbnail_prompt = models.TextField()
+    thumbnail_title = models.CharField(max_length=200, blank=True)
+    thumbnail_prompt = models.TextField(blank=True)
     thumbnail_image = models.ImageField(upload_to="thumbnails/", blank=True, null=True)
     thumbnail = models.ImageField(upload_to='thumbnails/', null=True, blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

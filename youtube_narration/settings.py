@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "narration_app",
     "widget_tweaks",
+    "django_celery_results",
 ]
 
 MIDDLEWARE = [
@@ -80,9 +81,9 @@ WSGI_APPLICATION = "youtube_narration.wsgi.application"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'data', 'db.sqlite3'),
     }
 }
 
@@ -150,3 +151,49 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 # Ensure the MEDIA_ROOT directory exists
 if not os.path.exists(MEDIA_ROOT):
     os.makedirs(MEDIA_ROOT)
+
+# SmartProxy Settings
+SMARTPROXY = {
+    'USERNAME': os.getenv('SMARTPROXY_USERNAME'),
+    'PASSWORD': os.getenv('SMARTPROXY_PASSWORD'),
+    'ENDPOINT': os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com'),
+    'PORT': os.getenv('SMARTPROXY_PORT', '7000'),
+    'MAX_RETRIES': 3,
+    'TIMEOUT': 30,
+}
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'django-db')
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes time limit
+
+# Redis Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,  # in seconds
+            'SOCKET_TIMEOUT': 5,  # in seconds
+            'RETRY_ON_TIMEOUT': True,
+            'MAX_CONNECTIONS': 1000,
+            'CONNECTION_POOL_KWARGS': {'max_connections': 100},
+            'PARSER_CLASS': 'redis.connection.HiredisParser',
+            'COMPRESSOR_CLASS': 'django_redis.compressors.zlib.ZlibCompressor',
+        },
+        'KEY_PREFIX': 'youtube_narration'
+    }
+}
+
+# Cache time to live is 15 minutes
+CACHE_TTL = 60 * 15
+
+# Set redis as the default session engine
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
