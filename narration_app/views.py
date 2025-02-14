@@ -616,6 +616,7 @@ class EditImagesView(View):
                 if not scene.image or scene.image_status != 'processing':
                     task = generate_scene_image_task.delay(scene.id, project.id)
                     scene.task_id = task.id
+                    scene.image_status = 'processing'  # Set status to processing
                     scene.save()
             return JsonResponse({'status': 'success'})
 
@@ -624,6 +625,7 @@ class EditImagesView(View):
                 if not scene.audio or scene.audio_status != 'processing':
                     task = generate_scene_audio_task.delay(scene.id, project.id)
                     scene.task_id = task.id
+                    scene.audio_status = 'processing'  # Set status to processing
                     scene.save()
             return JsonResponse({'status': 'success'})
 
@@ -640,6 +642,9 @@ class EditImagesView(View):
             # Now generate the image with updated prompt
             task = generate_scene_image_task.delay(scene.id, project.id)
             scene.task_id = task.id
+            scene.image_status = 'processing'  # Set status to processing
+            if scene.image:  # Clear existing image
+                scene.image.delete()
             scene.save()
             return JsonResponse({'status': 'success'})
 
@@ -655,6 +660,9 @@ class EditImagesView(View):
             
             task = generate_scene_audio_task.delay(scene.id, project.id)
             scene.task_id = task.id
+            scene.audio_status = 'processing'  # Set status to processing
+            if scene.audio:  # Clear existing audio
+                scene.audio.delete()
             scene.save()
             return JsonResponse({'status': 'success'})
 
@@ -675,6 +683,8 @@ class EditImagesView(View):
                 img.save(buffer, format='PNG')
                 buffer.seek(0)
                 
+                if scene.image:  # Clear existing image
+                    scene.image.delete()
                 scene.image.save(
                     f"scene_{scene.id}.png",
                     ContentFile(buffer.getvalue())
@@ -982,34 +992,66 @@ class TaskStatusView(View):
                 'completed': False,
                 'message': 'Waiting to start video generation'
             })
-        elif task_type in ['image', 'audio']:
-            scene_id = request.GET.get('scene_id')
-            if not scene_id:
-                return JsonResponse({'error': 'Missing scene_id'}, status=400)
-            scene = get_object_or_404(Scene, id=scene_id)
-            status = scene.image_status if task_type == 'image' else scene.audio_status
-            if scene.task_id:
-                result = AsyncResult(scene.task_id)
-                if result.ready():
-                    if result.successful():
-                        return JsonResponse({
-                            'completed': True,
-                            'message': f'{task_type.title()} generation completed'
-                        })
-                    else:
-                        return JsonResponse({
-                            'failed': True,
-                            'message': f'{task_type.title()} generation failed'
-                        })
-                # Task is still processing
+        elif task_type in ['image', 'audio', 'all_images', 'all_audios']:
+            if task_type.startswith('all_'):
+                # Check all scenes for the specific type
+                base_type = task_type.replace('all_', '')
+                scenes = project.scenes.all()
+                total_scenes = scenes.count()
+                completed_scenes = 0
+                failed_scenes = 0
+                
+                for scene in scenes:
+                    status = scene.image_status if base_type == 'images' else scene.audio_status
+                    if status == 'completed':
+                        completed_scenes += 1
+                    elif status == 'failed':
+                        failed_scenes += 1
+                
+                if completed_scenes == total_scenes:
+                    return JsonResponse({
+                        'completed': True,
+                        'message': f'All {base_type} generated successfully'
+                    })
+                elif failed_scenes > 0:
+                    return JsonResponse({
+                        'failed': True,
+                        'message': f'Some {base_type} generation failed'
+                    })
+                else:
+                    return JsonResponse({
+                        'completed': False,
+                        'message': f'Generating {base_type}... ({completed_scenes}/{total_scenes} completed)'
+                    })
+            else:
+                # Single scene processing
+                scene_id = request.GET.get('scene_id')
+                if not scene_id:
+                    return JsonResponse({'error': 'Missing scene_id'}, status=400)
+                scene = get_object_or_404(Scene, id=scene_id)
+                status = scene.image_status if task_type == 'image' else scene.audio_status
+                if scene.task_id:
+                    result = AsyncResult(scene.task_id)
+                    if result.ready():
+                        if result.successful():
+                            return JsonResponse({
+                                'completed': True,
+                                'message': f'{task_type.title()} generation completed'
+                            })
+                        else:
+                            return JsonResponse({
+                                'failed': True,
+                                'message': f'{task_type.title()} generation failed'
+                            })
+                    # Task is still processing
+                    return JsonResponse({
+                        'completed': False,
+                        'message': f'{task_type.title()} is being processed...'
+                    })
                 return JsonResponse({
-                    'completed': False,
-                    'message': f'{task_type.title()} is being processed...'
+                    'completed': status == 'completed',
+                    'failed': status == 'failed',
+                    'message': f'{task_type.title()} is {status}'
                 })
-            return JsonResponse({
-                'completed': status == 'completed',
-                'failed': status == 'failed',
-                'message': f'{task_type.title()} is {status}'
-            })
         
         return JsonResponse({'error': 'Invalid task type'}, status=400)

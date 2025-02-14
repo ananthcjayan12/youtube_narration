@@ -373,13 +373,26 @@
                 .then(data => {
                     if (data.completed) {
                         if (type === 'image') {
-                            // Force refresh the specific image by adding timestamp
                             const imgElement = document.getElementById(`sceneImage_${sceneId}`);
+                            const imageOverlay = document.getElementById(`imageOverlay_${sceneId}`);
                             if (imgElement) {
-                                const currentSrc = imgElement.src.split('?')[0];  // Remove any existing timestamp
-                                imgElement.src = `${currentSrc}?t=${new Date().getTime()}`;
-                                detectImageOrientation(sceneId);
-                                hideTaskStatus();
+                                // Remove any existing timestamp from the URL
+                                const baseUrl = imgElement.src.split('?')[0];
+                                // Add new timestamp to force cache refresh
+                                const newSrc = `${baseUrl}?t=${new Date().getTime()}`;
+                                
+                                // Create a new image object to preload
+                                const newImage = new Image();
+                                newImage.onload = function() {
+                                    // Update the displayed image only after new one is loaded
+                                    imgElement.src = newSrc;
+                                    detectImageOrientation(sceneId);
+                                    if (imageOverlay) {
+                                        imageOverlay.classList.add('hidden');
+                                    }
+                                    hideTaskStatus();
+                                };
+                                newImage.src = newSrc;
                             } else {
                                 location.reload();
                             }
@@ -593,6 +606,21 @@
                 console.error('Error:', error);
                 showToast('Error saving changes', 'error');
             });
+        });
+
+        // Append timestamp to all scene images on initial load to prevent caching
+        document.querySelectorAll('img[id^="sceneImage_"]').forEach(img => {
+             const baseUrl = img.src.split('?')[0];
+             img.src = baseUrl + '?t=' + new Date().getTime();
+        });
+
+        // Append timestamp to all audio sources on initial load to prevent caching
+        document.querySelectorAll('audio source').forEach(audioSource => {
+             const baseUrl = audioSource.src.split('?')[0];
+             audioSource.src = baseUrl + '?t=' + new Date().getTime();
+             if (audioSource.parentElement && typeof audioSource.parentElement.load === 'function') {
+                  audioSource.parentElement.load();
+             }
         });
     });
 
