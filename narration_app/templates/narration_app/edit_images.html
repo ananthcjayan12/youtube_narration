@@ -3,170 +3,276 @@
 
 {% block title %}Edit Project - {{ project.title }}{% endblock %}
 
+{% block header %}Edit Project{% endblock %}
+
+{% block header_actions %}
+<div class="flex space-x-3">
+    <button type="submit" form="edit-form" name="create_all_images" class="btn-primary" id="createAllImagesBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        Generate All Images
+    </button>
+    <button type="submit" form="edit-form" name="create_all_audios" class="btn-primary" id="createAllAudiosBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        </svg>
+        Generate All Audio
+    </button>
+    <button type="button" class="btn-success" id="generateVideoBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        Generate Video
+    </button>
+</div>
+{% endblock %}
+
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.min.css">
 <style>
-    .scene-slider {
-        width: 100%;
-        margin: 0 auto;
-    }
-    .scene-slide {
-        padding: 20px;
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        margin: 10px;
-    }
-    .scene-controls {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 20px;
-    }
     .slick-prev:before,
     .slick-next:before {
-        color: #007bff;
+        color: #4f46e5;
+        font-size: 24px;
     }
-    .image-container {
+
+    .slick-dots li button:before {
+        color: #4f46e5;
+    }
+
+    .scene-slide {
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+    }
+
+    .slick-active .scene-slide {
+        opacity: 1;
+    }
+
+    .custom-file-input::-webkit-file-upload-button {
+        display: none;
+    }
+
+    .custom-file-input::file-selector-button {
+        display: none;
+    }
+
+    .image-wrapper {
         position: relative;
-    }
-    .image-status-overlay,
-    .audio-status-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
+        width: 100%;
+        min-height: 400px;
         display: flex;
-        flex-direction: column;
         justify-content: center;
         align-items: center;
-        color: white;
-        z-index: 1000;
+        background: #f3f4f6;
+        border-radius: 0.5rem;
+        overflow: hidden;
     }
-    .status-text {
-        margin-top: 10px;
-        color: white;
-        text-align: center;
+
+    .image-container {
+        position: relative;
+        max-width: 100%;
+        max-height: 600px;
+        margin: auto;
     }
-    .disabled {
-        opacity: 0.6;
-        pointer-events: none;
+
+    .image-container img {
+        max-width: 100%;
+        max-height: 600px;
+        height: auto;
+        object-fit: contain;
     }
-    .progress-container {
-        width: 100%;
-        background-color: #f1f1f1;
-        border-radius: 4px;
-        margin-top: 10px;
+
+    .vertical-image {
+        width: auto !important;
+        height: 600px !important;
+        max-width: 100%;
     }
-    .progress-bar {
-        width: 0%;
-        height: 20px;
-        background-color: #4CAF50;
-        border-radius: 4px;
-        transition: width 0.3s ease-in-out;
+
+    .horizontal-image {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 600px;
     }
-    .error-message {
-        color: #dc3545;
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        padding: 10px;
-        border-radius: 4px;
-        margin-top: 10px;
-        display: none;
+
+    .image-aspect-toggle {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        background-color: rgba(255, 255, 255, 0.9);
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
     }
-    .success-message {
-        color: #155724;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        padding: 10px;
-        border-radius: 4px;
-        margin-top: 10px;
-        display: none;
+
+    .image-aspect-toggle:hover {
+        background-color: #ffffff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h1 class="mb-4">Edit Project: {{ project.title }}</h1>
-    <form method="post" enctype="multipart/form-data" id="edit-form">
-        {% csrf_token %}
-        <div class="mb-4">
-            <button type="submit" name="create_all_images" class="btn btn-primary me-2" id="createAllImagesBtn">Create All Images</button>
-            <button type="submit" name="create_all_audios" class="btn btn-primary me-2" id="createAllAudiosBtn">Create All Audios</button>
-            <button type="button" class="btn btn-success" id="generateVideoBtn">Generate Final Video</button>
+<div class="max-w-7xl mx-auto">
+    <!-- Task Status Alert -->
+    <div class="mb-6">
+        <div class="alert alert-info hidden" role="alert" id="taskStatus">
+            <div class="flex items-center">
+                <div class="mr-3">
+                    <svg class="animate-spin h-5 w-5 text-brand-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium text-brand-800" id="taskStatusText">Processing...</p>
+                    <div class="mt-2 w-full bg-brand-100 rounded-full h-1.5">
+                        <div class="bg-brand-600 h-1.5 rounded-full transition-all duration-300" id="taskProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div class="alert alert-info" role="alert" id="taskStatus" style="display: none;">
-            <div class="spinner-border spinner-border-sm" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <span id="taskStatusText">Processing...</span>
-            <div class="progress-container">
-                <div class="progress-bar" id="taskProgress"></div>
-            </div>
-        </div>
-        <div class="error-message" id="errorMessage"></div>
-        <div class="success-message" id="successMessage"></div>
+    <form method="post" enctype="multipart/form-data" id="edit-form" class="space-y-8">
+        {% csrf_token %}
 
         <div class="scene-slider">
             {% for scene in scenes %}
-            <div class="scene-slide" data-scene-id="{{ scene.id }}">
-                <h3 class="mb-3">Scene {{ scene.order }}</h3>
-                <div class="mb-3">
-                    <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
-                    <textarea name="narration_{{ scene.id }}" id="narration_{{ scene.id }}" class="form-control" rows="3">{{ scene.narration }}</textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
-                    <textarea name="image_prompt_{{ scene.id }}" id="image_prompt_{{ scene.id }}" class="form-control" rows="3">{{ scene.image_prompt }}</textarea>
-                </div>
-                <div class="mb-3">
-                    <div class="image-container">
-                        {% if scene.image %}
-                        <img src="{{ scene.image.url }}" alt="Scene {{ scene.order }}" class="img-fluid mb-2">
-                        {% endif %}
-                        <div class="image-status-overlay" style="display: {% if scene.image_status == 'processing' %}flex{% else %}none{% endif %};">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="status-text">Generating image...</p>
+            <div class="px-2">
+                <div class="card p-6 space-y-6" data-scene-id="{{ scene.id }}">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Scene {{ scene.order }}</h3>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
+                            Scene {{ forloop.counter }} of {{ scenes|length }}
+                        </span>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
+                            <textarea 
+                                name="narration_{{ scene.id }}" 
+                                id="narration_{{ scene.id }}" 
+                                class="form-input h-24"
+                                placeholder="Enter the narration text for this scene">{{ scene.narration }}</textarea>
                         </div>
+
+                        <div>
+                            <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
+                            <textarea 
+                                name="image_prompt_{{ scene.id }}" 
+                                id="image_prompt_{{ scene.id }}" 
+                                class="form-input h-24"
+                                placeholder="Describe the image you want to generate">{{ scene.image_prompt }}</textarea>
+                        </div>
+
+                        <div class="image-wrapper">
+                            {% if scene.image %}
+                            <div class="image-container" id="imageContainer_{{ scene.id }}">
+                                <button type="button" 
+                                    class="image-aspect-toggle"
+                                    onclick="toggleImageAspect('{{ scene.id }}')"
+                                    title="Toggle image aspect ratio">
+                                    <svg class="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                    </svg>
+                                </button>
+                                <img 
+                                    src="{{ scene.image.url }}" 
+                                    alt="Scene {{ scene.order }}"
+                                    id="sceneImage_{{ scene.id }}"
+                                    class="horizontal-image"
+                                    onload="detectImageOrientation('{{ scene.id }}')"
+                                >
+                            </div>
+                            {% else %}
+                            <div class="flex items-center justify-center h-[400px]">
+                                <div class="text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <p class="mt-2 text-sm text-gray-500">No image generated yet</p>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <div class="absolute inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center {% if scene.image_status == 'processing' %}flex{% else %}hidden{% endif %}" id="imageOverlay_{{ scene.id }}">
+                                <div class="text-center text-white">
+                                    <svg class="animate-spin h-8 w-8 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <p class="text-sm">Generating image...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <button type="submit" 
+                                name="regenerate_image" 
+                                value="{{ scene.id }}"
+                                class="btn-secondary regenerate-btn"
+                                {% if scene.image_status == 'processing' %}disabled{% endif %}>
+                                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Regenerate Image
+                            </button>
+                            
+                            <div class="relative">
+                                <input type="file" 
+                                    name="custom_image_{{ scene.id }}" 
+                                    id="custom_image_{{ scene.id }}" 
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    {% if scene.image_status == 'processing' %}disabled{% endif %}>
+                                <label class="btn-outline block text-center cursor-pointer">
+                                    <svg class="h-5 w-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                    </svg>
+                                    Upload Custom Image
+                                </label>
+                            </div>
+
+                            <button type="submit" 
+                                name="generate_audio" 
+                                value="{{ scene.id }}"
+                                class="btn-secondary generate-audio-btn"
+                                {% if scene.audio_status == 'processing' %}disabled{% endif %}>
+                                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                </svg>
+                                Generate Audio
+                            </button>
+                        </div>
+
+                        {% if scene.audio %}
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <audio controls class="w-full">
+                                <source src="{{ scene.audio.url }}" type="audio/mpeg">
+                                Your browser does not support the audio element.
+                            </audio>
+                        </div>
+                        {% endif %}
                     </div>
-                </div>
-                <div class="scene-controls">
-                    <button type="submit" name="regenerate_{{ scene.id }}" class="btn btn-secondary regenerate-btn" {% if scene.image_status == 'processing' %}disabled{% endif %}>
-                        Regenerate Image
-                    </button>
-                    <div class="custom-file">
-                        <input type="file" name="custom_image_{{ scene.id }}" id="custom_image_{{ scene.id }}" class="custom-file-input" {% if scene.image_status == 'processing' %}disabled{% endif %}>
-                        <label class="custom-file-label" for="custom_image_{{ scene.id }}">Upload Custom Image</label>
-                    </div>
-                    <button type="submit" name="generate_audio_{{ scene.id }}" class="btn btn-secondary generate-audio-btn" {% if scene.audio_status == 'processing' %}disabled{% endif %}>
-                        Generate Audio
-                    </button>
-                </div>
-                {% if scene.audio %}
-                <div class="mt-3">
-                    <label class="form-label">Preview Audio</label>
-                    <audio controls class="w-100">
-                        <source src="{{ scene.audio.url }}" type="audio/mpeg">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>
-                {% endif %}
-                <div class="audio-status-overlay" style="display: {% if scene.audio_status == 'processing' %}flex{% else %}none{% endif %};">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="status-text">Generating audio...</p>
                 </div>
             </div>
             {% endfor %}
         </div>
 
-        <button type="submit" class="btn btn-primary mt-4">Save Changes</button>
+        <div class="flex justify-end">
+            <button type="submit" class="btn-primary">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Save Changes
+            </button>
+        </div>
     </form>
 </div>
 {% endblock %}
@@ -175,49 +281,49 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
 <script>
+    function detectImageOrientation(sceneId) {
+        const img = document.getElementById(`sceneImage_${sceneId}`);
+        if (img.naturalHeight > img.naturalWidth) {
+            // Image is vertical/portrait
+            img.classList.remove('horizontal-image');
+            img.classList.add('vertical-image');
+        } else {
+            // Image is horizontal/landscape
+            img.classList.remove('vertical-image');
+            img.classList.add('horizontal-image');
+        }
+    }
+
+    function toggleImageAspect(sceneId) {
+        const img = document.getElementById(`sceneImage_${sceneId}`);
+        if (img.classList.contains('horizontal-image')) {
+            img.classList.remove('horizontal-image');
+            img.classList.add('vertical-image');
+        } else {
+            img.classList.remove('vertical-image');
+            img.classList.add('horizontal-image');
+        }
+    }
+
     $(document).ready(function(){
         $('.scene-slider').slick({
             dots: true,
             infinite: false,
             speed: 300,
             slidesToShow: 1,
-            adaptiveHeight: true
+            adaptiveHeight: true,
+            arrows: true,
+            autoplay: false,
+            draggable: false
         });
 
-        // Add click handler for generate video button
-        $('#generateVideoBtn').on('click', function() {
-            const button = $(this);
-            button.prop('disabled', true);
-            
-            // Get CSRF token
-            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-            
-            // Make POST request to generate_video endpoint
-            $.ajax({
-                url: '/generate_video/{{ project.id }}/',
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': csrftoken
-                },
-                success: function(response) {
-                    if (response.status === 'success') {
-                        alert('Video generation started successfully!');
-                        // Optionally redirect to a status page
-                        window.location.href = '/generate_video/{{ project.id }}/';
-                    } else {
-                        alert('Error: ' + response.message);
-                        button.prop('disabled', false);
-                    }
-                },
-                error: function(xhr) {
-                    let errorMessage = 'An error occurred while generating the video.';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    }
-                    alert(errorMessage);
-                    button.prop('disabled', false);
-                }
-            });
+        document.querySelectorAll('[id^="sceneImage_"]').forEach(img => {
+            const sceneId = img.id.split('_')[1];
+            if (img.complete) {
+                detectImageOrientation(sceneId);
+            } else {
+                img.addEventListener('load', () => detectImageOrientation(sceneId));
+            }
         });
     });
 
@@ -228,86 +334,63 @@
         const createAllImagesBtn = document.getElementById('createAllImagesBtn');
         const createAllAudiosBtn = document.getElementById('createAllAudiosBtn');
         const generateVideoBtn = document.getElementById('generateVideoBtn');
-        const errorMessage = document.getElementById('errorMessage');
-        const successMessage = document.getElementById('successMessage');
         const taskProgress = document.getElementById('taskProgress');
 
         function showTaskStatus(message) {
             taskStatusText.textContent = message;
-            taskStatus.style.display = 'block';
+            taskStatus.classList.remove('hidden');
+        }
+
+        function hideTaskStatus() {
+            taskStatus.classList.add('hidden');
         }
 
         function showError(message) {
-            errorMessage.textContent = message;
-            errorMessage.style.display = 'block';
-            setTimeout(() => {
-                errorMessage.style.display = 'none';
-            }, 5000);
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg z-50';
+            toast.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
         }
 
         function showSuccess(message) {
-            successMessage.textContent = message;
-            successMessage.style.display = 'block';
-            setTimeout(() => {
-                successMessage.style.display = 'none';
-            }, 3000);
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
+            toast.innerHTML = `
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>${message}</span>
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
         }
 
         function updateProgress(progress) {
             taskProgress.style.width = `${progress}%`;
         }
 
-        function checkSceneStatus(sceneId, type) {
-            const scene = document.querySelector(`[data-scene-id="${sceneId}"]`);
-            const overlay = type === 'image' ? 
-                scene.querySelector('.image-status-overlay') : 
-                scene.querySelector('.audio-status-overlay');
-            const button = type === 'image' ? 
-                scene.querySelector('.regenerate-btn') : 
-                scene.querySelector('.generate-audio-btn');
-            let progress = 0;
-
-            const checkInterval = setInterval(() => {
-                fetch(`/task-status/?scene_id=${sceneId}&type=${type}&project_id={{ project.id }}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.completed) {
-                        clearInterval(checkInterval);
-                        overlay.style.display = 'none';
-                        button.disabled = false;
-                        updateProgress(100);
-                        showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} generated successfully!`);
-                        setTimeout(() => location.reload(), 1500);
-                    } else if (data.failed) {
-                        clearInterval(checkInterval);
-                        overlay.style.display = 'none';
-                        button.disabled = false;
-                        showError(`Failed to generate ${type}. Please try again.`);
-                    } else {
-                        progress = Math.min(progress + 5, 90);
-                        updateProgress(progress);
-                    }
-                })
-                .catch(error => {
-                    clearInterval(checkInterval);
-                    overlay.style.display = 'none';
-                    button.disabled = false;
-                    showError(`Error checking ${type} status: ${error.message}`);
-                });
-            }, 2000);
-        }
-
-        // Handle individual scene image generation
-        document.querySelectorAll('.regenerate-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
+        // Handle individual scene actions
+        document.querySelectorAll('.regenerate-btn, .generate-audio-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
                 e.preventDefault();
-                const sceneId = this.closest('.scene-slide').dataset.sceneId;
-                const overlay = this.closest('.scene-slide').querySelector('.image-status-overlay');
-                this.disabled = true;
-                overlay.style.display = 'flex';
-
                 const formData = new FormData(form);
-                formData.append('regenerate_' + sceneId, '');
+                const isAudio = this.classList.contains('generate-audio-btn');
+                const action = isAudio ? 'audio' : 'image';
+                const sceneId = this.value;
+                
+                this.disabled = true;
+                showTaskStatus(`Generating ${action} for scene ${sceneId}...`);
+                updateProgress(0);
 
                 fetch(form.action, {
                     method: 'POST',
@@ -315,33 +398,75 @@
                     headers: {
                         'X-CSRFToken': formData.get('csrfmiddlewaretoken')
                     }
-                }).then(() => {
-                    checkSceneStatus(sceneId, 'image');
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        let progress = 0;
+                        const progressInterval = setInterval(() => {
+                            progress = Math.min(progress + 2, 90);
+                            updateProgress(progress);
+                        }, 1000);
+
+                        const checkCompletion = setInterval(() => {
+                            fetch(`/task-status/?type=scene_${action}&scene_id=${sceneId}`)
+                            .then(response => response.json())
+                            .then(statusData => {
+                                if (statusData.completed) {
+                                    clearInterval(checkCompletion);
+                                    clearInterval(progressInterval);
+                                    updateProgress(100);
+                                    showSuccess(`${action.charAt(0).toUpperCase() + action.slice(1)} generated successfully!`);
+                                    setTimeout(() => location.reload(), 1500);
+                                } else if (statusData.failed) {
+                                    clearInterval(checkCompletion);
+                                    clearInterval(progressInterval);
+                                    showError(`Failed to generate ${action}. Please try again.`);
+                                    this.disabled = false;
+                                }
+                            });
+                        }, 2000);
+                    } else {
+                        showError(data.message || `Failed to start ${action} generation`);
+                        this.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    showError(`An error occurred while generating ${action}`);
+                    this.disabled = false;
                 });
             });
         });
 
-        // Handle individual scene audio generation
-        document.querySelectorAll('.generate-audio-btn').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const sceneId = this.closest('.scene-slide').dataset.sceneId;
-                const overlay = this.closest('.scene-slide').querySelector('.audio-status-overlay');
-                this.disabled = true;
-                overlay.style.display = 'flex';
+        // Handle custom image upload
+        document.querySelectorAll('input[type="file"]').forEach(input => {
+            input.addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    const formData = new FormData(form);
+                    const sceneId = this.id.split('_').pop();
+                    
+                    showTaskStatus('Uploading custom image...');
+                    updateProgress(0);
 
-                const formData = new FormData(form);
-                formData.append('generate_audio_' + sceneId, '');
-
-                fetch(form.action, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-CSRFToken': formData.get('csrfmiddlewaretoken')
-                    }
-                }).then(() => {
-                    checkSceneStatus(sceneId, 'audio');
-                });
+                    fetch(form.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+                        }
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            showSuccess('Custom image uploaded successfully!');
+                            setTimeout(() => location.reload(), 1500);
+                        } else {
+                            showError('Failed to upload custom image');
+                        }
+                    })
+                    .catch(error => {
+                        showError('An error occurred while uploading the image');
+                    });
+                }
             });
         });
 
@@ -361,31 +486,42 @@
                 headers: {
                     'X-CSRFToken': formData.get('csrfmiddlewaretoken')
                 }
-            }).then(() => {
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress = Math.min(progress + 2, 90);
-                    updateProgress(progress);
-                }, 1000);
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress = Math.min(progress + 2, 90);
+                        updateProgress(progress);
+                    }, 1000);
 
-                const checkCompletion = setInterval(() => {
-                    fetch('/task-status/?type=all_images&project_id={{ project.id }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.completed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            updateProgress(100);
-                            showSuccess('All images generated successfully!');
-                            setTimeout(() => location.reload(), 1500);
-                        } else if (data.failed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            showError('Failed to generate some images. Please try again.');
-                            this.disabled = false;
-                        }
-                    });
-                }, 2000);
+                    const checkCompletion = setInterval(() => {
+                        fetch('/task-status/?type=all_images&project_id={{ project.id }}')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.completed) {
+                                clearInterval(checkCompletion);
+                                clearInterval(progressInterval);
+                                updateProgress(100);
+                                showSuccess('All images generated successfully!');
+                                setTimeout(() => location.reload(), 1500);
+                            } else if (data.failed) {
+                                clearInterval(checkCompletion);
+                                clearInterval(progressInterval);
+                                showError('Failed to generate some images. Please try again.');
+                                this.disabled = false;
+                            }
+                        });
+                    }, 2000);
+                } else {
+                    showError(data.message || 'Failed to start image generation');
+                    this.disabled = false;
+                }
+            })
+            .catch(error => {
+                showError('An error occurred while generating images');
+                this.disabled = false;
             });
         });
 
@@ -405,32 +541,96 @@
                 headers: {
                     'X-CSRFToken': formData.get('csrfmiddlewaretoken')
                 }
-            }).then(() => {
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress = Math.min(progress + 2, 90);
-                    updateProgress(progress);
-                }, 1000);
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress = Math.min(progress + 2, 90);
+                        updateProgress(progress);
+                    }, 1000);
 
-                const checkCompletion = setInterval(() => {
-                    fetch('/task-status/?type=all_audios&project_id={{ project.id }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.completed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            updateProgress(100);
-                            showSuccess('All audio files generated successfully!');
-                            setTimeout(() => location.reload(), 1500);
-                        } else if (data.failed) {
-                            clearInterval(checkCompletion);
-                            clearInterval(progressInterval);
-                            showError('Failed to generate some audio files. Please try again.');
-                            this.disabled = false;
-                        }
-                    });
-                }, 2000);
+                    const checkCompletion = setInterval(() => {
+                        fetch('/task-status/?type=all_audios&project_id={{ project.id }}')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.completed) {
+                                clearInterval(checkCompletion);
+                                clearInterval(progressInterval);
+                                updateProgress(100);
+                                showSuccess('All audio files generated successfully!');
+                                setTimeout(() => location.reload(), 1500);
+                            } else if (data.failed) {
+                                clearInterval(checkCompletion);
+                                clearInterval(progressInterval);
+                                showError('Failed to generate some audio files. Please try again.');
+                                this.disabled = false;
+                            }
+                        });
+                    }, 2000);
+                } else {
+                    showError(data.message || 'Failed to start audio generation');
+                    this.disabled = false;
+                }
+            })
+            .catch(error => {
+                showError('An error occurred while generating audio files');
+                this.disabled = false;
             });
+        });
+
+        // Handle generate video button
+        generateVideoBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const button = this;
+            button.disabled = true;
+            
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            
+            fetch('/generate_video/{{ project.id }}/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showSuccess('Video generation started successfully!');
+                    window.location.href = '/generate_video/{{ project.id }}/';
+                } else {
+                    showError(data.message || 'Failed to start video generation');
+                    button.disabled = false;
+                }
+            })
+            .catch(error => {
+                showError('An error occurred while generating the video');
+                button.disabled = false;
+            });
+        });
+
+        // Initialize slick slider
+        $('.scene-slider').slick({
+            dots: true,
+            infinite: false,
+            speed: 300,
+            slidesToShow: 1,
+            adaptiveHeight: true,
+            arrows: true,
+            autoplay: false,
+            draggable: false
+        });
+
+        // Initialize image orientation detection
+        document.querySelectorAll('[id^="sceneImage_"]').forEach(img => {
+            const sceneId = img.id.split('_')[1];
+            if (img.complete) {
+                detectImageOrientation(sceneId);
+            } else {
+                img.addEventListener('load', () => detectImageOrientation(sceneId));
+            }
         });
     });
 </script>
