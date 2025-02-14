@@ -4,7 +4,6 @@ from django.conf.urls.static import static
 from .views import (
     HomeView,
     CreateNarrationView,
-    EditNarrationView,
     EditImagesView,
     GenerateVideoView,
     DeleteProjectView,
@@ -21,7 +20,7 @@ from .views import (
 urlpatterns = [
     path("", HomeView.as_view(), name="home"),
     path("create/", CreateNarrationView.as_view(), name="create_narration"),
-    path("edit/<int:project_id>/", EditNarrationView.as_view(), name="edit_narration"),
+    path("edit/<int:project_id>/", EditImagesView.as_view(), name="edit_narration"),
     path("edit_images/<int:project_id>/", EditImagesView.as_view(), name="edit_images"),
     path(
         "generate_video/<int:project_id>/",

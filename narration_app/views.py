@@ -50,6 +50,7 @@ from .tasks import (
     generate_video_task,
     test_celery,
 )
+from celery.result import AsyncResult
 
 class GenerateCSVView(View):
     def get(self, request):
@@ -569,107 +570,40 @@ def create_scenes_and_youtube_details(project, transcription):
 # Views
 class HomeView(View):
     def get(self, request):
-        projects = Project.objects.all()
-
-        # Apply filters
-        search_query = request.GET.get('search')
-        status = request.GET.get('status')
-        tag = request.GET.get('tag')
-        has_youtube_details = request.GET.get('has_youtube_details')
-        has_audio = request.GET.get('has_audio')
-        has_image = request.GET.get('has_image')
-        has_final_video = request.GET.get('has_final_video')
-        is_published = request.GET.get('is_published')  # New filter
-
-        if not (search_query or status or tag or has_youtube_details or has_audio or has_image or has_final_video or is_published):
-            projects = projects.filter(is_published=False)
-        if search_query:
-            projects = projects.filter(Q(title__icontains=search_query) | Q(youtube_url__icontains=search_query))
-
-        if status:
-            projects = projects.filter(status=status)
-
-        if tag:
-            projects = projects.filter(tag=tag)
-
-        if has_youtube_details:
-            if has_youtube_details == 'yes':
-                projects = projects.filter(youtube_details__isnull=False)
-            elif has_youtube_details == 'no':
-                projects = projects.filter(youtube_details__isnull=True)
-
-        if has_audio:
-            if has_audio == 'yes':
-                projects = projects.filter(scenes__audio__isnull=False).distinct()
-            elif has_audio == 'no':
-                projects = projects.exclude(scenes__audio__isnull=False)
-
-        if has_image:
-            if has_image == 'yes':
-                projects = projects.filter(scenes__image__isnull=False).distinct()
-            elif has_image == 'no':
-                projects = projects.exclude(scenes__image__isnull=False)
-
-        if has_final_video:
-            if has_final_video == 'yes':
-                projects = projects.filter(final_video__isnull=False)
-            elif has_final_video == 'no':
-                projects = projects.filter(final_video__isnull=True)
-
-        if is_published:  # Filter by published status
-            if is_published == 'yes':
-                projects = projects.filter(is_published=True)
-            elif is_published == 'no':
-                projects = projects.filter(is_published=False)
-
-        return render(request, "narration_app/home.html", {"projects": projects})
+        projects = Project.objects.all().order_by('-created_at')
+        return render(request, 'narration_app/home.html', {'projects': projects})
 
 
 class CreateNarrationView(View):
     def get(self, request):
         form = ProjectForm()
-        return render(request, "narration_app/create_narration.html", {"form": form})
+        return render(request, 'narration_app/create_narration.html', {'form': form})
 
     def post(self, request):
         form = ProjectForm(request.POST)
         if form.is_valid():
-            project = form.save(commit=False)
-            youtube_id = extract_youtube_id(project.youtube_url)
-            project.youtube_id = youtube_id
+            project = form.save()
+            task = create_narration_task.delay(project.id)
+            project.task_id = task.id
             project.save()
-
-            # Start the Celery task
-            create_narration_task.delay(project.id)
-
             return JsonResponse({
-                'project_id': project.id,
-                'status': 'success'
+                'status': 'success',
+                'project_id': project.id
             })
         return JsonResponse({
             'status': 'error',
             'errors': form.errors
-        }, status=400)
-
-
-class EditNarrationView(View):
-    def get(self, request, project_id):
-        # Redirect directly to EditImagesView
-        return redirect("edit_images", project_id=project_id)
-
-    def post(self, request, project_id):
-        # This method can be removed if you're not using it anymore
-        pass
+        })
 
 
 class EditImagesView(View):
     def get(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        scenes = project.scenes.all().order_by("order")
-        return render(
-            request,
-            "narration_app/edit_images.html",
-            {"project": project, "scenes": scenes},
-        )
+        scenes = project.scenes.all().order_by('order')
+        return render(request, 'narration_app/edit_images.html', {
+            'project': project,
+            'scenes': scenes
+        })
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
@@ -677,94 +611,103 @@ class EditImagesView(View):
 
         if 'create_all_images' in request.POST:
             for scene in scenes:
-                generate_scene_image_task.delay(scene.id, project.id)
-            return redirect("edit_images", project_id=project.id)
+                if not scene.image or scene.image_status != 'processing':
+                    task = generate_scene_image_task.delay(scene.id, project.id)
+                    scene.task_id = task.id
+                    scene.save()
+            return JsonResponse({'status': 'success'})
 
         if 'create_all_audios' in request.POST:
             for scene in scenes:
-                generate_scene_audio_task.delay(scene.id, project.id)
-            return redirect("edit_images", project_id=project.id)
+                if not scene.audio or scene.audio_status != 'processing':
+                    task = generate_scene_audio_task.delay(scene.id, project.id)
+                    scene.task_id = task.id
+                    scene.save()
+            return JsonResponse({'status': 'success'})
 
-        if 'generate_final_video' in request.POST:
-            return redirect('generate_video', project_id=project.id)
+        if 'regenerate_image' in request.POST:
+            scene_id = request.POST.get('regenerate_image')
+            scene = get_object_or_404(Scene, id=scene_id)
+            task = generate_scene_image_task.delay(scene.id, project.id)
+            scene.task_id = task.id
+            scene.save()
+            return JsonResponse({'status': 'success'})
 
+        if 'generate_audio' in request.POST:
+            scene_id = request.POST.get('generate_audio')
+            scene = get_object_or_404(Scene, id=scene_id)
+            task = generate_scene_audio_task.delay(scene.id, project.id)
+            scene.task_id = task.id
+            scene.save()
+            return JsonResponse({'status': 'success'})
+
+        # Handle custom image upload
+        for key in request.FILES:
+            if key.startswith('custom_image_'):
+                scene_id = key.split('_')[-1]
+                scene = get_object_or_404(Scene, id=scene_id)
+                image_file = request.FILES[key]
+                
+                # Process and resize image
+                img = Image.open(image_file)
+                width, height = get_image_dimensions(project.video_format)
+                img = img.resize((width, height), Image.LANCZOS)
+                
+                # Save the processed image
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                buffer.seek(0)
+                
+                scene.image.save(
+                    f"scene_{scene.id}.png",
+                    ContentFile(buffer.getvalue())
+                )
+                scene.image_status = 'completed'
+                scene.save()
+
+        # Update scene narration and image prompts
         for scene in scenes:
-            scene.narration = request.POST.get(f"narration_{scene.id}")
-            scene.image_prompt = request.POST.get(f"image_prompt_{scene.id}")
-            
-            if f"regenerate_{scene.id}" in request.POST:
-                generate_scene_image_task.delay(scene.id, project.id)
-            
-            if f"generate_audio_{scene.id}" in request.POST:
-                generate_scene_audio_task.delay(scene.id, project.id)
-            
-            if f"custom_image_{scene.id}" in request.FILES:
-                custom_image = request.FILES[f"custom_image_{scene.id}"]
-                custom_image_name = f"scene_{scene.id}_{custom_image.name}"
-                scene.image.save(custom_image_name, custom_image)
-            
+            narration = request.POST.get(f'narration_{scene.id}')
+            image_prompt = request.POST.get(f'image_prompt_{scene.id}')
+            if narration is not None:
+                scene.narration = narration
+            if image_prompt is not None:
+                scene.image_prompt = image_prompt
             scene.save()
 
-        return redirect("edit_images", project_id=project.id)
+        return JsonResponse({'status': 'success'})
 
 
 class GenerateVideoView(View):
     def get(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        return render(
-            request, "narration_app/generate_video.html", {"project": project}
-        )
+        return render(request, 'narration_app/generate_video.html', {'project': project})
 
     def post(self, request, project_id):
-        try:
-            print(f"Received POST request for project {project_id}")
-            project = get_object_or_404(Project, id=project_id)
-            
-            # First run a test task
-            print("Running test Celery task...")
-            test_task = test_celery.delay()
-            print(f"Test task ID: {test_task.id}")
-            
-            # Check if all scenes have both audio and image
-            scenes = project.scenes.all()
-            missing_assets = []
-            
-            print(f"Checking assets for {scenes.count()} scenes")
-            for scene in scenes:
-                if not scene.audio:
-                    print(f"Scene {scene.order} missing audio")
-                    missing_assets.append(f"Scene {scene.order} is missing audio")
-                if not scene.image:
-                    print(f"Scene {scene.order} missing image")
-                    missing_assets.append(f"Scene {scene.order} is missing image")
-            
-            if missing_assets:
-                print(f"Found missing assets: {missing_assets}")
-                return JsonResponse({
-                    'status': 'error',
-                    'message': 'Some scenes are missing assets',
-                    'details': missing_assets
-                }, status=400)
-            
-            print(f"Starting video generation for project {project_id}")
-            # Start the video generation task
-            task = generate_video_task.delay(project.id)
-            print(f"Video generation task started with ID: {task.id}")
-            
-            return JsonResponse({
-                'status': 'success',
-                'message': 'Video generation started',
-                'task_id': task.id
-            })
-            
-        except Exception as e:
-            print(f"Error in GenerateVideoView: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
+        project = get_object_or_404(Project, id=project_id)
+        
+        # Check if all scenes have images and audio
+        scenes = project.scenes.all()
+        missing_assets = []
+        
+        for scene in scenes:
+            if not scene.image:
+                missing_assets.append(f"Scene {scene.order} is missing an image")
+            if not scene.audio:
+                missing_assets.append(f"Scene {scene.order} is missing audio")
+        
+        if missing_assets:
             return JsonResponse({
                 'status': 'error',
-                'message': str(e)
-            }, status=500)
+                'message': 'Some assets are missing',
+                'details': missing_assets
+            })
+        
+        task = generate_video_task.delay(project.id)
+        project.task_id = task.id
+        project.save()
+        
+        return JsonResponse({'status': 'success'})
 
 
 class DeleteProjectView(View):
@@ -973,49 +916,43 @@ class UpdatePublishedStatusView(View):
 class TaskStatusView(View):
     def get(self, request):
         project_id = request.GET.get('project_id')
-        scene_id = request.GET.get('scene_id')
         task_type = request.GET.get('type')
-
-        if project_id and task_type == 'narration':
-            project = get_object_or_404(Project, id=project_id)
-            return JsonResponse({
-                'status': project.narration_status,
-                'completed': project.narration_status == 'completed',
-                'failed': project.narration_status == 'failed'
-            })
-        elif scene_id and task_type in ['image', 'audio']:
+        
+        if not project_id or not task_type:
+            return JsonResponse({'error': 'Missing parameters'}, status=400)
+            
+        project = get_object_or_404(Project, id=project_id)
+        
+        if task_type == 'narration':
+            status = project.narration_status
+        elif task_type == 'final_video':
+            if project.final_video:
+                return JsonResponse({'completed': True})
+            elif project.task_id:
+                result = AsyncResult(project.task_id)
+                if result.ready():
+                    if result.successful():
+                        return JsonResponse({'completed': True})
+                    else:
+                        return JsonResponse({'failed': True})
+            return JsonResponse({'completed': False})
+        elif task_type in ['image', 'audio']:
+            scene_id = request.GET.get('scene_id')
+            if not scene_id:
+                return JsonResponse({'error': 'Missing scene_id'}, status=400)
+                
             scene = get_object_or_404(Scene, id=scene_id)
             status = scene.image_status if task_type == 'image' else scene.audio_status
-            return JsonResponse({
-                'status': status,
-                'completed': status == 'completed',
-                'failed': status == 'failed'
-            })
-        elif task_type in ['all_images', 'all_audios', 'final_video']:
-            project_id = request.GET.get('project_id')
-            if not project_id:
-                return JsonResponse({'error': 'Project ID is required'}, status=400)
             
-            project = get_object_or_404(Project, id=project_id)
-            scenes = project.scenes.all()
+            if scene.task_id:
+                result = AsyncResult(scene.task_id)
+                if result.ready():
+                    if result.successful():
+                        return JsonResponse({'completed': True})
+                    else:
+                        return JsonResponse({'failed': True})
             
-            if task_type == 'all_images':
-                statuses = [scene.image_status for scene in scenes]
-            elif task_type == 'all_audios':
-                statuses = [scene.audio_status for scene in scenes]
-            else:  # final_video
-                has_video = bool(project.final_video)
-                return JsonResponse({
-                    'completed': has_video,
-                    'failed': not has_video and any(scene.audio_status == 'failed' or scene.image_status == 'failed' for scene in scenes)
-                })
-            
-            all_completed = all(status == 'completed' for status in statuses)
-            any_failed = any(status == 'failed' for status in statuses)
-            
-            return JsonResponse({
-                'completed': all_completed,
-                'failed': any_failed
-            })
-        
-        return JsonResponse({'error': 'Invalid parameters'}, status=400)
+        return JsonResponse({
+            'completed': status == 'completed',
+            'failed': status == 'failed'
+        })
