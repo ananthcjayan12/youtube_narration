@@ -25,6 +25,7 @@ services:
     volumes:
       - ./media:/app/media
       - ./data/youtube_narration:/app/data/
+      - .:/app
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0

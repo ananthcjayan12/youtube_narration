@@ -630,6 +630,14 @@ class EditImagesView(View):
         if 'regenerate_image' in request.POST:
             scene_id = request.POST.get('regenerate_image')
             scene = get_object_or_404(Scene, id=scene_id)
+            
+            # Update the image prompt first
+            new_prompt = request.POST.get(f'image_prompt_{scene_id}')
+            if new_prompt:
+                scene.image_prompt = new_prompt
+                scene.save()
+            
+            # Now generate the image with updated prompt
             task = generate_scene_image_task.delay(scene.id, project.id)
             scene.task_id = task.id
             scene.save()
@@ -638,6 +646,13 @@ class EditImagesView(View):
         if 'generate_audio' in request.POST:
             scene_id = request.POST.get('generate_audio')
             scene = get_object_or_404(Scene, id=scene_id)
+            
+            # Update the narration first
+            new_narration = request.POST.get(f'narration_{scene_id}')
+            if new_narration:
+                scene.narration = new_narration
+                scene.save()
+            
             task = generate_scene_audio_task.delay(scene.id, project.id)
             scene.task_id = task.id
             scene.save()
@@ -666,18 +681,21 @@ class EditImagesView(View):
                 )
                 scene.image_status = 'completed'
                 scene.save()
+                return JsonResponse({'status': 'success'})
 
-        # Update scene narration and image prompts
-        for scene in scenes:
-            narration = request.POST.get(f'narration_{scene.id}')
-            image_prompt = request.POST.get(f'image_prompt_{scene.id}')
-            if narration is not None:
-                scene.narration = narration
-            if image_prompt is not None:
-                scene.image_prompt = image_prompt
-            scene.save()
-
-        return JsonResponse({'status': 'success'})
+        # Regular form submission - Update scene narration and image prompts
+        try:
+            for scene in scenes:
+                narration = request.POST.get(f'narration_{scene.id}')
+                image_prompt = request.POST.get(f'image_prompt_{scene.id}')
+                if narration is not None:
+                    scene.narration = narration
+                if image_prompt is not None:
+                    scene.image_prompt = image_prompt
+                scene.save()
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)})
 
 
 class GenerateVideoView(View):
