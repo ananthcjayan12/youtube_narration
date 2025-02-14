@@ -5,7 +5,6 @@ services:
     build: .
     command: gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
     volumes:
-      - .:/app
       - ./media:/app/media
       - ./data/youtube_narration:/app/data/
     ports:
@@ -23,10 +22,8 @@ services:
     build: .
     command: celery -A youtube_narration worker --loglevel=INFO --concurrency=2
     volumes:
-      - .:/app
       - ./media:/app/media
       - ./data/youtube_narration:/app/data/
-
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -39,9 +36,7 @@ services:
     build: .
     command: celery -A youtube_narration beat --loglevel=INFO
     volumes:
-      - .:/app
       - ./data/youtube_narration:/app/data/
-
     environment:
       - DJANGO_SETTINGS_MODULE=youtube_narration.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
