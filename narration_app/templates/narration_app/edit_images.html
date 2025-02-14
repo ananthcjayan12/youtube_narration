@@ -3,81 +3,276 @@
 
 {% block title %}Edit Project - {{ project.title }}{% endblock %}
 
+{% block header %}Edit Project{% endblock %}
+
+{% block header_actions %}
+<div class="flex space-x-3">
+    <button type="button" class="btn-primary" id="createAllImagesBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        Generate All Images
+    </button>
+    <button type="button" class="btn-primary" id="createAllAudiosBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        </svg>
+        Generate All Audio
+    </button>
+    <button type="button" class="btn-success" id="generateVideoBtn">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        Generate Video
+    </button>
+</div>
+{% endblock %}
+
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.min.css">
 <style>
-    .scene-slider {
-        width: 100%;
-        margin: 0 auto;
+    .slick-prev:before,
+    .slick-next:before {
+        color: #4f46e5;
+        font-size: 24px;
     }
+
+    .slick-dots li button:before {
+        color: #4f46e5;
+    }
+
     .scene-slide {
-        padding: 20px;
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        margin: 10px;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
     }
-    .scene-controls {
+
+    .slick-active .scene-slide {
+        opacity: 1;
+    }
+
+    .custom-file-input::-webkit-file-upload-button {
+        display: none;
+    }
+
+    .custom-file-input::file-selector-button {
+        display: none;
+    }
+
+    .image-wrapper {
+        position: relative;
+        width: 100%;
+        min-height: 400px;
         display: flex;
-        justify-content: space-between;
-        margin-top: 20px;
+        justify-content: center;
+        align-items: center;
+        background: #f3f4f6;
+        border-radius: 0.5rem;
+        overflow: hidden;
     }
-    .slick-prev:before, .slick-next:before {
-        color: #007bff;
+
+    .image-container {
+        position: relative;
+        max-width: 100%;
+        max-height: 600px;
+        margin: auto;
+    }
+
+    .image-container img {
+        max-width: 100%;
+        max-height: 600px;
+        height: auto;
+        object-fit: contain;
+    }
+
+    .vertical-image {
+        width: auto !important;
+        height: 600px !important;
+        max-width: 100%;
+    }
+
+    .horizontal-image {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 600px;
+    }
+
+    .image-aspect-toggle {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        background-color: rgba(255, 255, 255, 0.9);
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 0.5rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .image-aspect-toggle:hover {
+        background-color: #ffffff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h1 class="mb-4">Edit Project: {{ project.title }}</h1>
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        <div class="mb-4">
-            <button type="submit" name="create_all_images" class="btn btn-primary me-2">Create All Images</button>
-            <button type="submit" name="create_all_audios" class="btn btn-primary me-2">Create All Audios</button>
-            <button type="submit" name="generate_final_video" class="btn btn-success">Generate Final Video</button>
+<div class="max-w-7xl mx-auto">
+    <!-- Task Status Alert -->
+    <div class="mb-6">
+        <div class="alert alert-info hidden" role="alert" id="taskStatus">
+            <div class="flex items-center">
+                <div class="mr-3">
+                    <svg class="animate-spin h-5 w-5 text-brand-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium text-brand-800" id="taskStatusText">Processing...</p>
+                    <div class="mt-2 w-full bg-brand-100 rounded-full h-1.5">
+                        <div class="bg-brand-600 h-1.5 rounded-full transition-all duration-300" id="taskProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="edit-form" class="space-y-8">
+        {% csrf_token %}
 
         <div class="scene-slider">
             {% for scene in scenes %}
-            <div class="scene-slide">
-                <h3 class="mb-3">Scene {{ scene.order }}</h3>
-                <div class="mb-3">
-                    <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
-                    <textarea name="narration_{{ scene.id }}" id="narration_{{ scene.id }}" class="form-control" rows="3">{{ scene.narration }}</textarea>
-                </div>
-                <div class="mb-3">
-                    <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
-                    <textarea name="image_prompt_{{ scene.id }}" id="image_prompt_{{ scene.id }}" class="form-control" rows="3">{{ scene.image_prompt }}</textarea>
-                </div>
-                {% if scene.image %}
-                <div class="mb-3">
-                    <img src="{{ scene.image.url }}" alt="Scene {{ scene.order }}" class="img-fluid mb-2">
-                </div>
-                {% endif %}
-                <div class="scene-controls">
-                    <button type="submit" name="regenerate_{{ scene.id }}" class="btn btn-secondary">Regenerate Image</button>
-                    <div class="custom-file">
-                        <input type="file" name="custom_image_{{ scene.id }}" id="custom_image_{{ scene.id }}" class="custom-file-input">
-                        <label class="custom-file-label" for="custom_image_{{ scene.id }}">Upload Custom Image</label>
+            <div class="px-2">
+                <div class="card p-6 space-y-6" data-scene-id="{{ scene.id }}">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900">Scene {{ scene.order }}</h3>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
+                            Scene {{ forloop.counter }} of {{ scenes|length }}
+                        </span>
                     </div>
-                    <button type="submit" name="generate_audio_{{ scene.id }}" class="btn btn-secondary">Generate Audio</button>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label for="narration_{{ scene.id }}" class="form-label">Narration</label>
+                            <textarea 
+                                name="narration_{{ scene.id }}" 
+                                id="narration_{{ scene.id }}" 
+                                class="form-input h-24"
+                                placeholder="Enter the narration text for this scene">{{ scene.narration }}</textarea>
+                        </div>
+
+                        <div>
+                            <label for="image_prompt_{{ scene.id }}" class="form-label">Image Prompt</label>
+                            <textarea 
+                                name="image_prompt_{{ scene.id }}" 
+                                id="image_prompt_{{ scene.id }}" 
+                                class="form-input h-24"
+                                placeholder="Describe the image you want to generate">{{ scene.image_prompt }}</textarea>
+                        </div>
+
+                        <div class="image-wrapper">
+                            {% if scene.image %}
+                            <div class="image-container" id="imageContainer_{{ scene.id }}">
+                                <button type="button" 
+                                    class="image-aspect-toggle"
+                                    onclick="toggleImageAspect('{{ scene.id }}')"
+                                    title="Toggle image aspect ratio">
+                                    <svg class="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                    </svg>
+                                </button>
+                                <img 
+                                    src="{{ scene.image.url }}" 
+                                    alt="Scene {{ scene.order }}"
+                                    id="sceneImage_{{ scene.id }}"
+                                    class="horizontal-image"
+                                    onload="detectImageOrientation('{{ scene.id }}')"
+                                >
+                            </div>
+                            {% else %}
+                            <div class="flex items-center justify-center h-[400px]">
+                                <div class="text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <p class="mt-2 text-sm text-gray-500">No image generated yet</p>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            <div class="absolute inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center {% if scene.image_status == 'processing' %}flex{% else %}hidden{% endif %}" id="imageOverlay_{{ scene.id }}">
+                                <div class="text-center text-white">
+                                    <svg class="animate-spin h-8 w-8 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <p class="text-sm">Generating image...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <button type="submit" 
+                                name="regenerate_image" 
+                                value="{{ scene.id }}"
+                                class="btn-secondary regenerate-btn"
+                                {% if scene.image_status == 'processing' %}disabled{% endif %}>
+                                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Regenerate Image
+                            </button>
+                            
+                            <div class="relative">
+                                <input type="file" 
+                                    name="custom_image_{{ scene.id }}" 
+                                    id="custom_image_{{ scene.id }}" 
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    {% if scene.image_status == 'processing' %}disabled{% endif %}>
+                                <label class="btn-outline block text-center cursor-pointer">
+                                    <svg class="h-5 w-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                    </svg>
+                                    Upload Custom Image
+                                </label>
+                            </div>
+
+                            <button type="submit" 
+                                name="generate_audio" 
+                                value="{{ scene.id }}"
+                                class="btn-secondary generate-audio-btn"
+                                {% if scene.audio_status == 'processing' %}disabled{% endif %}>
+                                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                </svg>
+                                Generate Audio
+                            </button>
+                        </div>
+
+                        {% if scene.audio %}
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <audio controls class="w-full">
+                                <source src="{{ scene.audio.url }}" type="audio/mpeg">
+                                Your browser does not support the audio element.
+                            </audio>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
-                {% if scene.audio %}
-                <div class="mt-3">
-                    <label class="form-label">Preview Audio</label>
-                    <audio controls class="w-100">
-                        <source src="{{ scene.audio.url }}" type="audio/mpeg">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>
-                {% endif %}
             </div>
             {% endfor %}
         </div>
 
-        <button type="submit" class="btn btn-primary mt-4">Save Changes</button>
+        <div class="flex justify-end">
+            <button type="submit" class="btn-primary">
+                <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Save Changes
+            </button>
+        </div>
     </form>
 </div>
 {% endblock %}
@@ -86,13 +281,253 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
 <script>
+    function detectImageOrientation(sceneId) {
+        const img = document.getElementById(`sceneImage_${sceneId}`);
+        if (img.naturalHeight > img.naturalWidth) {
+            // Image is vertical/portrait
+            img.classList.remove('horizontal-image');
+            img.classList.add('vertical-image');
+        } else {
+            // Image is horizontal/landscape
+            img.classList.remove('vertical-image');
+            img.classList.add('horizontal-image');
+        }
+    }
+
+    function toggleImageAspect(sceneId) {
+        const img = document.getElementById(`sceneImage_${sceneId}`);
+        if (img.classList.contains('horizontal-image')) {
+            img.classList.remove('horizontal-image');
+            img.classList.add('vertical-image');
+        } else {
+            img.classList.remove('vertical-image');
+            img.classList.add('horizontal-image');
+        }
+    }
+
     $(document).ready(function(){
         $('.scene-slider').slick({
             dots: true,
             infinite: false,
             speed: 300,
             slidesToShow: 1,
-            adaptiveHeight: true
+            adaptiveHeight: true,
+            arrows: true,
+            autoplay: false,
+            draggable: false
+        });
+
+        document.querySelectorAll('[id^="sceneImage_"]').forEach(img => {
+            const sceneId = img.id.split('_')[1];
+            if (img.complete) {
+                detectImageOrientation(sceneId);
+            } else {
+                img.addEventListener('load', () => detectImageOrientation(sceneId));
+            }
+        });
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const projectId = '{{ project.id }}';
+        const taskStatus = document.getElementById('taskStatus');
+        const taskStatusText = document.getElementById('taskStatusText');
+        const taskProgress = document.getElementById('taskProgress');
+
+        function showTaskStatus(message) {
+            taskStatus.classList.remove('hidden');
+            taskStatusText.textContent = message;
+            taskProgress.style.width = '0%';
+        }
+
+        function hideTaskStatus() {
+            taskStatus.classList.add('hidden');
+        }
+
+        function updateProgress(width) {
+            taskProgress.style.width = width + '%';
+        }
+
+        function checkTaskStatus(sceneId, type) {
+            let url = `/task-status/?project_id=${projectId}`;
+            if (sceneId) {
+                url += `&scene_id=${sceneId}&type=${type}`;
+            } else {
+                url += `&type=${type}`;
+            }
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.completed) {
+                        location.reload();
+                    } else if (data.failed) {
+                        hideTaskStatus();
+                        alert('Task failed. Please try again.');
+                    } else {
+                        let currentWidth = parseInt(taskProgress.style.width) || 0;
+                        if (currentWidth < 90) {
+                            updateProgress(currentWidth + 1);
+                        }
+                        setTimeout(() => checkTaskStatus(sceneId, type), 2000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    hideTaskStatus();
+                    alert('Error checking task status');
+                });
+        }
+
+        // Handle Generate All Images
+        document.getElementById('createAllImagesBtn').addEventListener('click', function() {
+            showTaskStatus('Generating all images...');
+            fetch('', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: 'create_all_images=true'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    checkTaskStatus(null, 'all_images');
+                } else {
+                    hideTaskStatus();
+                    alert('Failed to start image generation');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                hideTaskStatus();
+                alert('Error starting image generation');
+            });
+        });
+
+        // Handle Generate All Audio
+        document.getElementById('createAllAudiosBtn').addEventListener('click', function() {
+            showTaskStatus('Generating all audio...');
+            fetch('', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken
+                },
+                body: 'create_all_audios=true'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    checkTaskStatus(null, 'all_audios');
+                } else {
+                    hideTaskStatus();
+                    alert('Failed to start audio generation');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                hideTaskStatus();
+                alert('Error starting audio generation');
+            });
+        });
+
+        // Handle Generate Video
+        document.getElementById('generateVideoBtn').addEventListener('click', function() {
+            window.location.href = `/generate_video/${projectId}/`;
+        });
+
+        // Handle Regenerate Image buttons
+        document.querySelectorAll('.regenerate-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sceneId = this.value;
+                showTaskStatus('Regenerating image...');
+                
+                fetch('', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: `regenerate_image=${sceneId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        checkTaskStatus(sceneId, 'image');
+                    } else {
+                        hideTaskStatus();
+                        alert('Failed to start image regeneration');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    hideTaskStatus();
+                    alert('Error starting image regeneration');
+                });
+            });
+        });
+
+        // Handle Generate Audio buttons
+        document.querySelectorAll('.generate-audio-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const sceneId = this.value;
+                showTaskStatus('Generating audio...');
+                
+                fetch('', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: `generate_audio=${sceneId}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        checkTaskStatus(sceneId, 'audio');
+                    } else {
+                        hideTaskStatus();
+                        alert('Failed to start audio generation');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    hideTaskStatus();
+                    alert('Error starting audio generation');
+                });
+            });
+        });
+
+        // Handle custom image upload
+        document.querySelectorAll('input[type="file"]').forEach(input => {
+            input.addEventListener('change', function() {
+                if (this.files.length > 0) {
+                    const formData = new FormData();
+                    formData.append('csrfmiddlewaretoken', csrfToken);
+                    formData.append(this.name, this.files[0]);
+                    
+                    fetch('', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            location.reload();
+                        } else {
+                            alert('Failed to upload image');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error uploading image');
+                    });
+                }
+            });
         });
     });
 </script>

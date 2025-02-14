@@ -7,6 +7,11 @@ RUN apt-get update && apt-get install -y \
     libsm6 \
     libxext6 \
     libgl1-mesa-glx \
+    # Add font packages
+    fonts-liberation \
+    fontconfig \
+    # Install ImageMagick
+    imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -19,7 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
-RUN mkdir -p static staticfiles media
+RUN mkdir -p /app/data/ /app/static /app/staticfiles
 
 # Copy project files
 COPY . .
@@ -27,15 +32,26 @@ COPY . .
 # Collect static files
 RUN python manage.py collectstatic --noinput
 
+# Copy and set ImageMagick policy
+COPY policy.xml /etc/ImageMagick-6/policy.xml
+
 # Expose ports
 EXPOSE 8000
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DJANGO_SETTINGS_MODULE=youtube_narration.settings
+ENV CELERY_BROKER_URL=redis://redis:6379/0
+ENV CELERY_RESULT_BACKEND=django-db
 
-# Run migrations
-RUN python manage.py migrate
+# Remove or comment out the migration command since the database directory doesn't exist yet
+# RUN python manage.py migrate
 
-# Use gunicorn for production
-CMD gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
+# Create entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# Default command (can be overridden in docker-compose.yml)
+CMD ["gunicorn", "youtube_narration.wsgi:application", "--bind", "0.0.0.0:8000"]

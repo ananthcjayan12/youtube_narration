@@ -40,6 +40,17 @@ from PIL import Image, ImageDraw, ImageFont
 from django.db.models import Q  # Ensure to import Q for filtering
 import csv
 from django.http import HttpResponse
+from requests.auth import HTTPProxyAuth
+from urllib.parse import urlparse
+import random
+from .tasks import (
+    create_narration_task,
+    generate_scene_image_task,
+    generate_scene_audio_task,
+    generate_video_task,
+    test_celery,
+)
+from celery.result import AsyncResult
 
 class GenerateCSVView(View):
     def get(self, request):
@@ -84,14 +95,17 @@ class GenerateThumbnailView(View):
         youtube_details = project.youtube_details
 
         if youtube_details and youtube_details.thumbnail_prompt:
-            # Generate image using the thumbnail prompt
+            # Use project's video format for thumbnail
+            aspect_ratio = "9:16" if project.video_format == 'reel' else "16:9"
+            width, height = (1080, 1920) if project.video_format == 'reel' else (1280, 720)
+
             output = replicate_run(
                 "black-forest-labs/flux-schnell",
                 input={
                     "seed": 5,
                     "prompt": youtube_details.thumbnail_prompt,
                     "num_outputs": 1,
-                    "aspect_ratio": "16:9",
+                    "aspect_ratio": aspect_ratio,
                     "output_format": "png",
                     "output_quality": 80,
                 },
@@ -102,20 +116,25 @@ class GenerateThumbnailView(View):
             # Create a PIL Image from the image data
             image = Image.open(io.BytesIO(image_data))
 
-            # Resize the image to YouTube thumbnail dimensions (1280x720)
-            image = image.resize((1280, 720), Image.LANCZOS)
+            # Resize the image to appropriate dimensions
+            image = image.resize((width, height), Image.LANCZOS)
 
             # Add thumbnail title text to the image
             draw = ImageDraw.Draw(image)
-            # Use a default font if custom font is not available
             try:
                 font = ImageFont.truetype("path/to/your/font.ttf", 60)
             except IOError:
                 font = ImageFont.load_default()
             text = youtube_details.thumbnail_title
             text_width, text_height = draw.textsize(text, font=font)
-            position = ((1280 - text_width) // 2, 720 - text_height - 20)  # Center bottom
-            draw.text(position, text, font=font, fill=(255, 255, 255))  # White text
+            
+            # Adjust text position based on format
+            if project.video_format == 'reel':
+                position = ((width - text_width) // 2, height - text_height - 100)
+            else:
+                position = ((width - text_width) // 2, height - text_height - 20)
+                
+            draw.text(position, text, font=font, fill=(255, 255, 255))
 
             # Save the image to a buffer
             buffer = io.BytesIO()
@@ -185,6 +204,25 @@ def extract_youtube_id(url):
     return None
 
 
+def get_smartproxy_session():
+    username = os.getenv('SMARTPROXY_USERNAME')
+    password = os.getenv('SMARTPROXY_PASSWORD')
+    endpoint = os.getenv('SMARTPROXY_ENDPOINT', 'gate.smartproxy.com')
+    port = os.getenv('SMARTPROXY_PORT', '7000')
+
+    proxy_url = f"http://{endpoint}:{port}"
+    auth = HTTPProxyAuth(username, password)
+    
+    session = requests.Session()
+    session.proxies = {
+        'http': proxy_url,
+        'https': proxy_url
+    }
+    session.auth = auth
+    
+    return session
+
+ 
 def get_or_create_transcription(youtube_id):
     try:
         project = Project.objects.get(youtube_id=youtube_id)
@@ -193,14 +231,30 @@ def get_or_create_transcription(youtube_id):
     except Project.DoesNotExist:
         project = None
 
-    transcript = YouTubeTranscriptApi.get_transcript(youtube_id)
-    transcription = " ".join([entry["text"] for entry in transcript])
+    try:
+        # Construct the YouTube URL from the ID
+        youtube_url = f"https://www.youtube.com/watch?v={youtube_id}"
+        # Use your custom endpoint
+        transcript_url = f"https://cjsubtitle.ananth-c-jayan.workers.dev/api/transcript?url={youtube_url}&output=json"
+        
+        response = requests.get(transcript_url)
+        response.raise_for_status()  # Raise exception for bad status codes
+        
+        transcript_data = response.json()
+        # Filter out [Music] entries and join the text
+        transcription = " ".join(
+            entry["text"] for entry in transcript_data 
+            if entry["text"] and entry["text"] != "[Music]"
+        )
 
-    if project:
-        project.transcription = transcription
-        project.save()
+        if project:
+            project.transcription = transcription
+            project.save()
 
-    return transcription
+        return transcription
+    except Exception as e:
+        print(f"Failed to get transcription: {str(e)}")
+        raise
 
 
 def generate_narration(transcript):
@@ -271,29 +325,103 @@ def generate_voice(content, index, directory):
 
 
 
-def create_word_clip(word, start_time, duration, clip_width, clip_height, font_size=50):
-    word_clip = TextClip(
-        word,
-        fontsize=font_size,
-        color="white",
-        font="Poppins-Bold",
-    )
-    text_width, text_height = word_clip.size
-    background_clip = ColorClip(
-        size=(text_width + 30, text_height + 20), color=(0, 0, 0)
-    ).set_opacity(0.5)
-    word_clip = (
-        word_clip.set_position(("center", "center"))
+def create_word_clip(word, start_time, duration, clip_width, clip_height, font_size=None):
+    print(f"Creating word clip for: {word}")
+    print(f"Dimensions: {clip_width}x{clip_height}")
+    
+    # Adjust font size based on video format
+    if clip_height > clip_width:  # It's a reel
+        font_size = font_size or 80  # Slightly smaller font for reels
+        max_width = int(clip_width * 0.9)  # 90% of video width for reels
+    else:
+        font_size = font_size or 50
+        max_width = int(clip_width * 0.8)  # 80% of video width for landscape
+
+    try:
+        # Split long text into multiple lines if needed
+        words = word.split()
+        lines = []
+        current_line = []
+        
+        temp_clip = TextClip(
+            "test",
+            fontsize=font_size,
+            color="white",
+            font="Poppins-Bold",
+            stroke_color='black',
+            stroke_width=2,
+        )
+        
+        current_width = 0
+        for w in words:
+            test_clip = TextClip(
+                w,
+                fontsize=font_size,
+                color="white",
+                font="Poppins-Bold",
+                stroke_color='black',
+                stroke_width=2,
+            )
+            word_width = test_clip.w
+            test_clip.close()
+            
+            if current_width + word_width <= max_width:
+                current_line.append(w)
+                current_width += word_width + font_size//2  # Add space between words
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [w]
+                current_width = word_width
+        
+        if current_line:
+            lines.append(" ".join(current_line))
+        
+        # Create text clip for each line
+        text_clips = []
+        total_height = 0
+        for line in lines:
+            line_clip = TextClip(
+                line,
+                fontsize=font_size,
+                color="white",
+                font="Poppins-Bold",
+                stroke_color='black',
+                stroke_width=2,
+                method='label',
+            )
+            text_clips.append(line_clip)
+            total_height += line_clip.h + 10  # Add spacing between lines
+        
+        # Create background
+        bg_height = total_height + 40  # Add padding
+        bg_clip = ColorClip(
+            size=(clip_width, bg_height),
+            color=(0, 0, 0)
+        ).set_opacity(0.7)
+        
+        # Position text clips vertically
+        y_position = 20
+        positioned_clips = [bg_clip]
+        for text_clip in text_clips:
+            positioned_clip = text_clip.set_position(
+                ('center', y_position)
+            )
+            positioned_clips.append(positioned_clip)
+            y_position += text_clip.h + 10
+        
+        # Composite all clips
+        final_txt_clip = (CompositeVideoClip(
+            positioned_clips,
+            size=(clip_width, bg_height)
+        )
         .set_start(start_time)
-        .set_duration(duration)
-    )
-    background_clip = (
-        background_clip.set_position(("center", "center"))
-        .set_start(start_time)
-        .set_duration(duration)
-    )
-    combined_clip = CompositeVideoClip([background_clip, word_clip])
-    return combined_clip.crossfadein(0.1)
+        .set_duration(duration + 0.1)
+        .crossfadein(0.1))
+        
+        return final_txt_clip
+    except Exception as e:
+        print(f"Error creating word clip: {e}")
+        return None
 
 
 def resize_with_aspect_ratio(image_path, max_size):
@@ -442,261 +570,147 @@ def create_scenes_and_youtube_details(project, transcription):
 # Views
 class HomeView(View):
     def get(self, request):
-        projects = Project.objects.all()
-
-        # Apply filters
-        search_query = request.GET.get('search')
-        status = request.GET.get('status')
-        tag = request.GET.get('tag')
-        has_youtube_details = request.GET.get('has_youtube_details')
-        has_audio = request.GET.get('has_audio')
-        has_image = request.GET.get('has_image')
-        has_final_video = request.GET.get('has_final_video')
-        is_published = request.GET.get('is_published')  # New filter
-
-        if not (search_query or status or tag or has_youtube_details or has_audio or has_image or has_final_video or is_published):
-            projects = projects.filter(is_published=False)
-        if search_query:
-            projects = projects.filter(Q(title__icontains=search_query) | Q(youtube_url__icontains=search_query))
-
-        if status:
-            projects = projects.filter(status=status)
-
-        if tag:
-            projects = projects.filter(tag=tag)
-
-        if has_youtube_details:
-            if has_youtube_details == 'yes':
-                projects = projects.filter(youtube_details__isnull=False)
-            elif has_youtube_details == 'no':
-                projects = projects.filter(youtube_details__isnull=True)
-
-        if has_audio:
-            if has_audio == 'yes':
-                projects = projects.filter(scenes__audio__isnull=False).distinct()
-            elif has_audio == 'no':
-                projects = projects.exclude(scenes__audio__isnull=False)
-
-        if has_image:
-            if has_image == 'yes':
-                projects = projects.filter(scenes__image__isnull=False).distinct()
-            elif has_image == 'no':
-                projects = projects.exclude(scenes__image__isnull=False)
-
-        if has_final_video:
-            if has_final_video == 'yes':
-                projects = projects.filter(final_video__isnull=False)
-            elif has_final_video == 'no':
-                projects = projects.filter(final_video__isnull=True)
-
-        if is_published:  # Filter by published status
-            if is_published == 'yes':
-                projects = projects.filter(is_published=True)
-            elif is_published == 'no':
-                projects = projects.filter(is_published=False)
-
-        return render(request, "narration_app/home.html", {"projects": projects})
+        projects = Project.objects.all().order_by('-created_at')
+        return render(request, 'narration_app/home.html', {'projects': projects})
 
 
 class CreateNarrationView(View):
     def get(self, request):
         form = ProjectForm()
-        return render(request, "narration_app/create_narration.html", {"form": form})
+        return render(request, 'narration_app/create_narration.html', {'form': form})
 
     def post(self, request):
         form = ProjectForm(request.POST)
         if form.is_valid():
-            project = form.save(commit=False)
-            youtube_id = extract_youtube_id(project.youtube_url)
-            project.youtube_id = youtube_id
+            project = form.save()
+            task = create_narration_task.delay(project.id)
+            project.task_id = task.id
             project.save()
-
-            transcription = get_or_create_transcription(youtube_id)
-
-            create_scenes_and_youtube_details(project, transcription)
-
-            return redirect("edit_narration", project_id=project.id)
-        return render(request, "narration_app/create_narration.html", {"form": form})
-
-
-class EditNarrationView(View):
-    def get(self, request, project_id):
-        # Redirect directly to EditImagesView
-        return redirect("edit_images", project_id=project_id)
-
-    def post(self, request, project_id):
-        # This method can be removed if you're not using it anymore
-        pass
+            return JsonResponse({
+                'status': 'success',
+                'project_id': project.id
+            })
+        return JsonResponse({
+            'status': 'error',
+            'errors': form.errors
+        })
 
 
 class EditImagesView(View):
     def get(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        scenes = project.scenes.all().order_by("order")
-        return render(
-            request,
-            "narration_app/edit_images.html",
-            {"project": project, "scenes": scenes},
-        )
+        scenes = project.scenes.all().order_by('order')
+        return render(request, 'narration_app/edit_images.html', {
+            'project': project,
+            'scenes': scenes
+        })
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
-        os.makedirs(project_media_dir, exist_ok=True)
+        scenes = project.scenes.all()
 
-        for scene in project.scenes.all():
-            scene.narration = request.POST.get(f"narration_{scene.id}")
-            scene.image_prompt = request.POST.get(f"image_prompt_{scene.id}")
-            if 'generate_final_video' in request.POST:
-                return redirect('generate_video', project_id=project.id)
-            if f"regenerate_{scene.id}" in request.POST:
-                output = replicate_run(
-                    "black-forest-labs/flux-schnell",
-                    input={
-                        "seed": 5,
-                        "prompt": scene.image_prompt,
-                        "num_outputs": 1,
-                        "aspect_ratio": "16:9",
-                        "output_format": "png",
-                        "output_quality": 80,
-                    },
-                )
-                image_url = output[0]
-                image_data = requests.get(image_url).content
-                image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
-                save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (1920, 1080))
-                scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
-
-            if f"custom_image_{scene.id}" in request.FILES:
-                custom_image = request.FILES[f"custom_image_{scene.id}"]
-                custom_image_name = f"scene_{scene.id}_{custom_image.name}"
-                custom_image_path = os.path.join(project_media_dir, custom_image_name)
-                with open(custom_image_path, "wb") as f:
-                    for chunk in custom_image.chunks():
-                        f.write(chunk)
-                resize_with_aspect_ratio(custom_image_path, (1920, 1080))
-                scene.image = os.path.join(project.title, custom_image_name)
-
-            if f"generate_audio_{scene.id}" in request.POST:
-                audio_file_name = f"scene_{scene.id}_audio.mp3"
-                audio_file_path = os.path.join(project_media_dir, audio_file_name)
-                
-                # Generate the audio file
-                generate_voice(scene.narration, scene.id, project_media_dir)
-                
-                # Check if the file exists
-                if os.path.exists(audio_file_path):
-                    scene.audio = os.path.join(project.title, audio_file_name)
-                else:
-                    print(f"Audio file not found: {audio_file_path}")
-
-            scene.save()
         if 'create_all_images' in request.POST:
-            for scene in project.scenes.all():
-                output = replicate_run(
-                    "black-forest-labs/flux-schnell",
-                    input={
-                        "seed": 5,
-                        "prompt": scene.image_prompt,
-                        "num_outputs": 1,
-                        "aspect_ratio": "16:9",
-                        "output_format": "png",
-                        "output_quality": 80,
-                    },
-                )
-                image_url = output[0]
-                image_data = requests.get(image_url).content
-                image_path = os.path.join(project_media_dir, f"scene_{scene.id}.png")
-                save_image(image_data, image_path)
-                resize_with_aspect_ratio(image_path, (1920, 1080))
-                scene.image = os.path.join(project.title, f"scene_{scene.id}.png")
-                scene.save()
+            for scene in scenes:
+                if not scene.image or scene.image_status != 'processing':
+                    task = generate_scene_image_task.delay(scene.id, project.id)
+                    scene.task_id = task.id
+                    scene.save()
+            return JsonResponse({'status': 'success'})
 
         if 'create_all_audios' in request.POST:
-            for scene in project.scenes.all():
-                audio_file_name = f"scene_{scene.id}_audio.mp3"
-                audio_file_path = os.path.join(project_media_dir, audio_file_name)
-                
-                # Generate the audio file
-                generate_voice(scene.narration, scene.id, project_media_dir)
-                
-                # Check if the file exists
-                if os.path.exists(audio_file_path):
-                    scene.audio = os.path.join(project.title, audio_file_name)
+            for scene in scenes:
+                if not scene.audio or scene.audio_status != 'processing':
+                    task = generate_scene_audio_task.delay(scene.id, project.id)
+                    scene.task_id = task.id
                     scene.save()
-                else:
-                    print(f"Audio file not found: {audio_file_path}")
-        return redirect("edit_images", project_id=project.id)
+            return JsonResponse({'status': 'success'})
+
+        if 'regenerate_image' in request.POST:
+            scene_id = request.POST.get('regenerate_image')
+            scene = get_object_or_404(Scene, id=scene_id)
+            task = generate_scene_image_task.delay(scene.id, project.id)
+            scene.task_id = task.id
+            scene.save()
+            return JsonResponse({'status': 'success'})
+
+        if 'generate_audio' in request.POST:
+            scene_id = request.POST.get('generate_audio')
+            scene = get_object_or_404(Scene, id=scene_id)
+            task = generate_scene_audio_task.delay(scene.id, project.id)
+            scene.task_id = task.id
+            scene.save()
+            return JsonResponse({'status': 'success'})
+
+        # Handle custom image upload
+        for key in request.FILES:
+            if key.startswith('custom_image_'):
+                scene_id = key.split('_')[-1]
+                scene = get_object_or_404(Scene, id=scene_id)
+                image_file = request.FILES[key]
+                
+                # Process and resize image
+                img = Image.open(image_file)
+                width, height = get_image_dimensions(project.video_format)
+                img = img.resize((width, height), Image.LANCZOS)
+                
+                # Save the processed image
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                buffer.seek(0)
+                
+                scene.image.save(
+                    f"scene_{scene.id}.png",
+                    ContentFile(buffer.getvalue())
+                )
+                scene.image_status = 'completed'
+                scene.save()
+
+        # Update scene narration and image prompts
+        for scene in scenes:
+            narration = request.POST.get(f'narration_{scene.id}')
+            image_prompt = request.POST.get(f'image_prompt_{scene.id}')
+            if narration is not None:
+                scene.narration = narration
+            if image_prompt is not None:
+                scene.image_prompt = image_prompt
+            scene.save()
+
+        return JsonResponse({'status': 'success'})
 
 
 class GenerateVideoView(View):
     def get(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        return render(
-            request, "narration_app/generate_video.html", {"project": project}
-        )
+        return render(request, 'narration_app/generate_video.html', {'project': project})
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
-        project_media_dir = os.path.join(settings.MEDIA_ROOT, project.title)
-        os.makedirs(project_media_dir, exist_ok=True)
-        scenes = project.scenes.all().order_by("order")
-
-        video_clips = []
-        for i, scene in enumerate(scenes):
-            audio_file_path = os.path.join(settings.MEDIA_ROOT, scene.audio.name)
-            audio_clip = AudioFileClip(audio_file_path)
-            image_file_path = os.path.join(settings.MEDIA_ROOT, scene.image.name)
-            image_clip = ImageClip(image_file_path).set_duration(audio_clip.duration)
-            image_clip = image_clip.resize(height=1080)  # Assuming 1080p video
-            
-            panned_zoomed_clip = image_clip.fx(
-                resize,
-                lambda t: 1 + 0.02 * t + (0.01 if t < audio_clip.duration / 2 else -0.01),
-            ).set_position(("center", "center"))
-
-            transcription_path = os.path.join(
-                project_media_dir,
-                f"{os.path.splitext(audio_file_path)[0]}_transcription.json",
-            )
-            transcription = transcribe_audio_with_whisper(
-                audio_file_path, transcription_path
-            )
-
-            subtitle_clips = []
-            for j in range(0, len(transcription), 4):
-                words = transcription[j : j + 4]
-                word_text = " ".join([word_info["word"] for word_info in words])
-                start_time = words[0]["start"]
-                end_time = words[-1]["end"]
-                duration = end_time - start_time
-                word_clip = create_word_clip(
-                    word_text,
-                    start_time,
-                    duration,
-                    panned_zoomed_clip.w,
-                    panned_zoomed_clip.h,
-                )
-                word_clip = word_clip.set_position(
-                    ("center", panned_zoomed_clip.h - 180)
-                )
-                subtitle_clips.append(word_clip)
-
-            video_clip = CompositeVideoClip(
-                [panned_zoomed_clip, *subtitle_clips]
-            ).set_audio(audio_clip)
-            video_clips.append(video_clip)
-
-        final_video = concatenate_videoclips(video_clips, method="compose")
-        output_video_name = f"final_video_{project.id}.mp4"
-        output_video_path = os.path.join(project_media_dir, output_video_name)
-        final_video.write_videofile(output_video_path, codec="libx264", fps=10)
-
-        project.final_video = os.path.join(project.title, output_video_name)
+        
+        # Check if all scenes have images and audio
+        scenes = project.scenes.all()
+        missing_assets = []
+        for scene in scenes:
+            if not scene.image:
+                missing_assets.append(f"Scene {scene.order} is missing an image")
+            if not scene.audio:
+                missing_assets.append(f"Scene {scene.order} is missing audio")
+        
+        if missing_assets:
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Some assets are missing',
+                'details': missing_assets
+            })
+        
+        # Read the skip_subtitles flag from POST data (expects 'true' to skip subtitles)
+        skip_subtitles = request.POST.get('skip_subtitles', 'false').lower() == 'true'
+        
+        # Pass the flag to the generate_video_task
+        task = generate_video_task.delay(project.id, skip_subtitles)
+        project.task_id = task.id
         project.save()
-
-        return redirect("home")
+        
+        return JsonResponse({'status': 'success'})
 
 
 class DeleteProjectView(View):
@@ -887,51 +901,13 @@ class CreateCustomNarrationView(FormView):
 
         self.success_url = self.success_url.format(project_id=project.id)
         return super().form_valid(form)        # Add this new view
-class GenerateThumbnailView(View):
-    def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
-        youtube_details = project.youtube_details
 
-        if youtube_details and youtube_details.thumbnail_prompt:
-            # Generate image using the thumbnail prompt
-            output = replicate_run(
-                "black-forest-labs/flux-schnell",
-                input={
-                    "seed": 5,
-                    "prompt": youtube_details.thumbnail_prompt,
-                    "num_outputs": 1,
-                    "aspect_ratio": "16:9",
-                    "output_format": "png",
-                    "output_quality": 80,
-                },
-            )
-            image_url = output[0]
-            image_data = requests.get(image_url).content
+# Add this helper function at the top with other utility functions
+def get_image_dimensions(video_format):
+    if video_format == 'reel':
+        return (1080, 1920)  # Standard Reel dimensions
+    return (1920, 1080)  # Standard landscape dimensions
 
-            # Create a PIL Image from the image data
-            image = Image.open(io.BytesIO(image_data))
-
-            # Resize the image to YouTube thumbnail dimensions (1280x720)
-            image = image.resize((1280, 720), Image.LANCZOS)
-
-            # Add thumbnail title text to the image
-            draw = ImageDraw.Draw(image)
-            # font = ImageFont.truetype("path/to/your/font.ttf", 60)  # Adjust font and size as needed
-            text = youtube_details.thumbnail_title
-            text_width, text_height = draw.textsize(text)
-            position = ((1280 - text_width) // 2, 720 - text_height - 20)  # Center bottom
-            draw.text(position, text, fill=(255, 255, 255))  # White text
-
-            # Save the image to a buffer
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-
-            # Save the image to the YouTubeDetails model
-            youtube_details.thumbnail.save(f"thumbnail_{project.id}.png", ContentFile(buffer.getvalue()))
-            youtube_details.save()
-
-        return redirect('home')
 class UpdatePublishedStatusView(View):
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
@@ -939,3 +915,49 @@ class UpdatePublishedStatusView(View):
         project.is_published = data.get('is_published', False)
         project.save()
         return JsonResponse({'status': 'success'})
+
+class TaskStatusView(View):
+    def get(self, request):
+        project_id = request.GET.get('project_id')
+        task_type = request.GET.get('type')
+        
+        if not project_id or not task_type:
+            return JsonResponse({'error': 'Missing parameters'}, status=400)
+            
+        project = get_object_or_404(Project, id=project_id)
+        
+        if task_type == 'narration':
+            status = project.narration_status
+            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
+        elif task_type == 'final_video':
+            if project.final_video:
+                return JsonResponse({'completed': True})
+            elif project.task_id:
+                result = AsyncResult(project.task_id)
+                if result.info and isinstance(result.info, dict):
+                    # Return progress meta info
+                    return JsonResponse({**result.info, 'state': result.state})
+                if result.ready():
+                    if result.successful():
+                        return JsonResponse({'completed': True})
+                    else:
+                        return JsonResponse({'failed': True})
+            return JsonResponse({'completed': False})
+        elif task_type in ['image', 'audio']:
+            scene_id = request.GET.get('scene_id')
+            if not scene_id:
+                return JsonResponse({'error': 'Missing scene_id'}, status=400)
+            scene = get_object_or_404(Scene, id=scene_id)
+            status = scene.image_status if task_type == 'image' else scene.audio_status
+            if scene.task_id:
+                result = AsyncResult(scene.task_id)
+                if result.info and isinstance(result.info, dict):
+                    return JsonResponse({**result.info, 'state': result.state})
+                if result.ready():
+                    if result.successful():
+                        return JsonResponse({'completed': True})
+                    else:
+                        return JsonResponse({'failed': True})
+            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
+        
+        return JsonResponse({'error': 'Invalid task type'}, status=400)
