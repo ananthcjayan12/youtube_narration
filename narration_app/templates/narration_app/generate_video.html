@@ -30,9 +30,6 @@
                     </div>
                     <div class="flex-1">
                         <p class="font-medium text-brand-800" id="statusText">Generating video... This may take several minutes.</p>
-                        <div class="mt-2 w-full bg-brand-100 rounded-full h-1.5">
-                            <div class="bg-brand-600 h-1.5 rounded-full transition-all duration-300" role="progressbar" id="progressBar" style="width: 0%"></div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -107,7 +104,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorAlert = document.getElementById('errorAlert');
     const errorMessage = document.getElementById('errorMessage');
     const errorDetails = document.getElementById('errorDetails');
-    const progressBar = document.getElementById('progressBar');
 
     function showError(message, details = []) {
         errorMessage.textContent = message;
@@ -129,20 +125,14 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.completed) {
-                    statusText.textContent = 'Video generation completed successfully!';
-                    progressBar.style.width = '100%';
+                    statusText.textContent = data.message || 'Video generation completed successfully!';
                     setTimeout(() => {
                         window.location.reload();
                     }, 2000);
                 } else if (data.failed) {
-                    showError('Video generation failed. Please try again.');
+                    showError(data.message || 'Video generation failed. Please try again.');
                 } else {
-                    // Update progress
-                    let currentWidth = parseInt(progressBar.style.width) || 0;
-                    if (currentWidth < 90) {
-                        progressBar.style.width = (currentWidth + 1) + '%';
-                    }
-                    // Continue checking
+                    statusText.textContent = data.message || 'Video is being processed...';
                     setTimeout(checkTaskStatus, 2000);
                 }
             })
@@ -156,7 +146,7 @@ document.addEventListener('DOMContentLoaded', function() {
         generateBtn.disabled = true;
         errorAlert.classList.add('hidden');
         taskStatus.classList.remove('hidden');
-        progressBar.style.width = '0%';
+        statusText.textContent = 'Starting video generation...';
 
         const formData = new FormData(generateVideoForm);
         const skipSubtitles = document.getElementById('skip_subtitles').checked;

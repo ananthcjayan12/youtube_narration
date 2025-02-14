@@ -194,9 +194,22 @@ def generate_video_task(self, project_id, skip_subtitles=False):
         video_clips = []
         total_scenes = scenes.count()
         
+        # Initial progress update
+        self.update_state(state='PROGRESS', meta={
+            'current': 0,
+            'total': total_scenes * 2 + 1,  # Scenes processing + concatenation + final write
+            'message': 'Starting video generation...',
+            'percent': 0
+        })
+        
         for idx, scene in enumerate(scenes, start=1):
-            # Update progress for each scene
-            self.update_state(state='PROGRESS', meta={'current': idx, 'total': total_scenes, 'message': f'Processing scene {scene.id}'})
+            # Update progress for scene processing
+            self.update_state(state='PROGRESS', meta={
+                'current': idx,
+                'total': total_scenes * 2 + 1,
+                'message': f'Processing scene {idx}/{total_scenes}',
+                'percent': int((idx / (total_scenes * 2 + 1)) * 100)
+            })
             
             if not scene.audio or not scene.image:
                 raise Exception(f"Scene {scene.id} missing audio or image")
@@ -259,16 +272,36 @@ def generate_video_task(self, project_id, skip_subtitles=False):
             
             video_clip = CompositeVideoClip(clips_to_composite, size=(width, height)).set_audio(audio_clip)
             video_clips.append(video_clip)
+            
+            # Update progress after scene is processed
+            self.update_state(state='PROGRESS', meta={
+                'current': total_scenes + idx,
+                'total': total_scenes * 2 + 1,
+                'message': f'Processed scene {idx}/{total_scenes}',
+                'percent': int(((total_scenes + idx) / (total_scenes * 2 + 1)) * 100)
+            })
         
         # Update progress before concatenation
-        self.update_state(state='PROGRESS', meta={'current': total_scenes, 'total': total_scenes, 'message': 'Concatenating video clips...'})
+        self.update_state(state='PROGRESS', meta={
+            'current': total_scenes * 2,
+            'total': total_scenes * 2 + 1,
+            'message': 'Concatenating video clips...',
+            'percent': int((total_scenes * 2 / (total_scenes * 2 + 1)) * 100)
+        })
+        
         final_video = concatenate_videoclips(video_clips, method="compose")
         
         output_video_name = f"final_video_{project.id}.mp4"
         output_video_path = os.path.join(project_media_dir, output_video_name)
         
         # Update progress before writing final video
-        self.update_state(state='PROGRESS', meta={'current': total_scenes, 'total': total_scenes, 'message': f'Writing final video to {output_video_path}'})
+        self.update_state(state='PROGRESS', meta={
+            'current': total_scenes * 2 + 1,
+            'total': total_scenes * 2 + 1,
+            'message': 'Writing final video...',
+            'percent': 95
+        })
+        
         final_video.write_videofile(
             output_video_path,
             codec="libx264",

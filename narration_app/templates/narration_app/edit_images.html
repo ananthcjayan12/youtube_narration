@@ -119,6 +119,18 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
+    <!-- Toast Message -->
+    <div id="toast" class="fixed top-4 right-4 z-50 transform transition-transform duration-300 translate-x-full">
+        <div class="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center">
+            <span id="toastMessage" class="mr-2"></span>
+            <button onclick="hideToast()" class="ml-auto">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
     <!-- Task Status Alert -->
     <div class="mb-6">
         <div class="alert alert-info hidden" role="alert" id="taskStatus">
@@ -360,15 +372,54 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.completed) {
-                        location.reload();
+                        if (type === 'image') {
+                            const imgElement = document.getElementById(`sceneImage_${sceneId}`);
+                            const imageOverlay = document.getElementById(`imageOverlay_${sceneId}`);
+                            if (imgElement) {
+                                // Remove any existing timestamp from the URL
+                                const baseUrl = imgElement.src.split('?')[0];
+                                // Add new timestamp to force cache refresh
+                                const newSrc = `${baseUrl}?t=${new Date().getTime()}`;
+                                
+                                // Create a new image object to preload
+                                const newImage = new Image();
+                                newImage.onload = function() {
+                                    // Update the displayed image only after new one is loaded
+                                    imgElement.src = newSrc;
+                                    detectImageOrientation(sceneId);
+                                    if (imageOverlay) {
+                                        imageOverlay.classList.add('hidden');
+                                    }
+                                    hideTaskStatus();
+                                };
+                                newImage.src = newSrc;
+                            } else {
+                                location.reload();
+                            }
+                        } else if (type === 'audio') {
+                            // Force refresh the specific audio element by adding timestamp
+                            const audioContainer = document.querySelector(`[data-scene-id="${sceneId}"] audio`);
+                            if (audioContainer) {
+                                const audioSource = audioContainer.querySelector('source');
+                                if (audioSource) {
+                                    const currentSrc = audioSource.src.split('?')[0];
+                                    audioSource.src = `${currentSrc}?t=${new Date().getTime()}`;
+                                    audioContainer.load(); // Reload the audio element
+                                    hideTaskStatus();
+                                } else {
+                                    location.reload();
+                                }
+                            } else {
+                                location.reload();
+                            }
+                        } else {
+                            location.reload();
+                        }
                     } else if (data.failed) {
                         hideTaskStatus();
                         alert('Task failed. Please try again.');
                     } else {
-                        let currentWidth = parseInt(taskProgress.style.width) || 0;
-                        if (currentWidth < 90) {
-                            updateProgress(currentWidth + 1);
-                        }
+                        taskStatusText.textContent = data.message || `${type} is being processed...`;
                         setTimeout(() => checkTaskStatus(sceneId, type), 2000);
                     }
                 })
@@ -443,15 +494,17 @@
             button.addEventListener('click', function(e) {
                 e.preventDefault();
                 const sceneId = this.value;
+                const imagePrompt = document.getElementById(`image_prompt_${sceneId}`).value;
                 showTaskStatus('Regenerating image...');
+                
+                const formData = new FormData();
+                formData.append('regenerate_image', sceneId);
+                formData.append(`image_prompt_${sceneId}`, imagePrompt);
+                formData.append('csrfmiddlewaretoken', csrfToken);
                 
                 fetch('', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: `regenerate_image=${sceneId}`
+                    body: formData
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -475,15 +528,17 @@
             button.addEventListener('click', function(e) {
                 e.preventDefault();
                 const sceneId = this.value;
+                const narrationText = document.getElementById(`narration_${sceneId}`).value;
                 showTaskStatus('Generating audio...');
+                
+                const formData = new FormData();
+                formData.append('generate_audio', sceneId);
+                formData.append(`narration_${sceneId}`, narrationText);
+                formData.append('csrfmiddlewaretoken', csrfToken);
                 
                 fetch('', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: `generate_audio=${sceneId}`
+                    body: formData
                 })
                 .then(response => response.json())
                 .then(data => {
@@ -529,6 +584,60 @@
                 }
             });
         });
+
+        // Handle form submission
+        document.getElementById('edit-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Changes saved successfully');
+                } else {
+                    showToast('Failed to save changes', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Error saving changes', 'error');
+            });
+        });
+
+        // Append timestamp to all scene images on initial load to prevent caching
+        document.querySelectorAll('img[id^="sceneImage_"]').forEach(img => {
+             const baseUrl = img.src.split('?')[0];
+             img.src = baseUrl + '?t=' + new Date().getTime();
+        });
+
+        // Append timestamp to all audio sources on initial load to prevent caching
+        document.querySelectorAll('audio source').forEach(audioSource => {
+             const baseUrl = audioSource.src.split('?')[0];
+             audioSource.src = baseUrl + '?t=' + new Date().getTime();
+             if (audioSource.parentElement && typeof audioSource.parentElement.load === 'function') {
+                  audioSource.parentElement.load();
+             }
+        });
     });
+
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toastMessage');
+        toast.classList.remove('translate-x-full');
+        toast.querySelector('div').className = `${type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-3 rounded-lg shadow-lg flex items-center`;
+        toastMessage.textContent = message;
+        
+        // Auto hide after 3 seconds
+        setTimeout(hideToast, 3000);
+    }
+
+    function hideToast() {
+        const toast = document.getElementById('toast');
+        toast.classList.add('translate-x-full');
+    }
 </script>
 {% endblock %}
