@@ -689,7 +689,6 @@ class GenerateVideoView(View):
         # Check if all scenes have images and audio
         scenes = project.scenes.all()
         missing_assets = []
-        
         for scene in scenes:
             if not scene.image:
                 missing_assets.append(f"Scene {scene.order} is missing an image")
@@ -703,7 +702,11 @@ class GenerateVideoView(View):
                 'details': missing_assets
             })
         
-        task = generate_video_task.delay(project.id)
+        # Read the skip_subtitles flag from POST data (expects 'true' to skip subtitles)
+        skip_subtitles = request.POST.get('skip_subtitles', 'false').lower() == 'true'
+        
+        # Pass the flag to the generate_video_task
+        task = generate_video_task.delay(project.id, skip_subtitles)
         project.task_id = task.id
         project.save()
         
@@ -925,11 +928,15 @@ class TaskStatusView(View):
         
         if task_type == 'narration':
             status = project.narration_status
+            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
         elif task_type == 'final_video':
             if project.final_video:
                 return JsonResponse({'completed': True})
             elif project.task_id:
                 result = AsyncResult(project.task_id)
+                if result.info and isinstance(result.info, dict):
+                    # Return progress meta info
+                    return JsonResponse({**result.info, 'state': result.state})
                 if result.ready():
                     if result.successful():
                         return JsonResponse({'completed': True})
@@ -940,19 +947,17 @@ class TaskStatusView(View):
             scene_id = request.GET.get('scene_id')
             if not scene_id:
                 return JsonResponse({'error': 'Missing scene_id'}, status=400)
-                
             scene = get_object_or_404(Scene, id=scene_id)
             status = scene.image_status if task_type == 'image' else scene.audio_status
-            
             if scene.task_id:
                 result = AsyncResult(scene.task_id)
+                if result.info and isinstance(result.info, dict):
+                    return JsonResponse({**result.info, 'state': result.state})
                 if result.ready():
                     if result.successful():
                         return JsonResponse({'completed': True})
                     else:
                         return JsonResponse({'failed': True})
-            
-        return JsonResponse({
-            'completed': status == 'completed',
-            'failed': status == 'failed'
-        })
+            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
+        
+        return JsonResponse({'error': 'Invalid task type'}, status=400)

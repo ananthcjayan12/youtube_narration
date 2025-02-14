@@ -273,7 +273,7 @@ def generate_video_task(self, project_id, skip_subtitles=False):
             output_video_path,
             codec="libx264",
             audio_codec="aac",
-            fps=30,
+            fps=10,
             threads=4,
             preset="medium"
         )
