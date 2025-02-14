@@ -6,7 +6,6 @@ services:
     command: gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/app
-      - static_volume:/app/staticfiles
       - ./media:/app/media
       - ./data/youtube_narration:/app/data/
     ports:
