@@ -365,10 +365,7 @@
                         hideTaskStatus();
                         alert('Task failed. Please try again.');
                     } else {
-                        let currentWidth = parseInt(taskProgress.style.width) || 0;
-                        if (currentWidth < 90) {
-                            updateProgress(currentWidth + 1);
-                        }
+                        taskStatusText.textContent = data.message || `${type} is being processed...`;
                         setTimeout(() => checkTaskStatus(sceneId, type), 2000);
                     }
                 })

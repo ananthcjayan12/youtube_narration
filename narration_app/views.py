@@ -930,21 +930,40 @@ class TaskStatusView(View):
         
         if task_type == 'narration':
             status = project.narration_status
-            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
+            return JsonResponse({
+                'completed': status == 'completed',
+                'failed': status == 'failed',
+                'message': 'Generating narration...' if status == 'processing' else 'Narration complete' if status == 'completed' else 'Narration failed'
+            })
         elif task_type == 'final_video':
             if project.final_video:
-                return JsonResponse({'completed': True})
+                return JsonResponse({
+                    'completed': True,
+                    'message': 'Video generation completed'
+                })
             elif project.task_id:
                 result = AsyncResult(project.task_id)
-                if result.info and isinstance(result.info, dict):
-                    # Return progress meta info
-                    return JsonResponse({**result.info, 'state': result.state})
                 if result.ready():
                     if result.successful():
-                        return JsonResponse({'completed': True})
+                        return JsonResponse({
+                            'completed': True,
+                            'message': 'Video generation completed'
+                        })
                     else:
-                        return JsonResponse({'failed': True})
-            return JsonResponse({'completed': False})
+                        return JsonResponse({
+                            'failed': True,
+                            'message': 'Video generation failed'
+                        })
+                # Task is still processing
+                return JsonResponse({
+                    'completed': False,
+                    'message': 'Video is being processed...'
+                })
+            # No task ID found
+            return JsonResponse({
+                'completed': False,
+                'message': 'Waiting to start video generation'
+            })
         elif task_type in ['image', 'audio']:
             scene_id = request.GET.get('scene_id')
             if not scene_id:
@@ -953,13 +972,26 @@ class TaskStatusView(View):
             status = scene.image_status if task_type == 'image' else scene.audio_status
             if scene.task_id:
                 result = AsyncResult(scene.task_id)
-                if result.info and isinstance(result.info, dict):
-                    return JsonResponse({**result.info, 'state': result.state})
                 if result.ready():
                     if result.successful():
-                        return JsonResponse({'completed': True})
+                        return JsonResponse({
+                            'completed': True,
+                            'message': f'{task_type.title()} generation completed'
+                        })
                     else:
-                        return JsonResponse({'failed': True})
-            return JsonResponse({'completed': status == 'completed', 'failed': status == 'failed'})
+                        return JsonResponse({
+                            'failed': True,
+                            'message': f'{task_type.title()} generation failed'
+                        })
+                # Task is still processing
+                return JsonResponse({
+                    'completed': False,
+                    'message': f'{task_type.title()} is being processed...'
+                })
+            return JsonResponse({
+                'completed': status == 'completed',
+                'failed': status == 'failed',
+                'message': f'{task_type.title()} is {status}'
+            })
         
         return JsonResponse({'error': 'Invalid task type'}, status=400)

@@ -1,4 +1,4 @@
-.PHONY: build up down restart logs shell migrate static test clean help stop
+.PHONY: build build-no-cache up stop down restart logs shell migrate static test clean help celery-logs celery-restart redis-cli redis-monitor backup restore watch
 
 # Variables
 IMAGE_NAME = youtube-narration
@@ -9,95 +9,85 @@ PORT_SYSTEM = 8000
 GREEN = \033[0;32m
 NC = \033[0m # No Color
 
+# Docker Compose command for dev environment
+DC = docker-compose -f docker-compose.dev.yml
+
 help:
-	@echo "Available commands:"
-	@echo "  make build      - Build all Docker images"
-	@echo "  make up         - Start all containers in detached mode"
-	@echo "  make stop       - Stop running containers without removing them"
-	@echo "  make down       - Stop and remove all containers"
-	@echo "  make restart    - Restart all containers"
-	@echo "  make logs       - View logs from all containers"
-	@echo "  make shell      - Open a shell in the web container"
-	@echo "  make migrate    - Run Django migrations"
-	@echo "  make static     - Collect static files"
-	@echo "  make test       - Run Django tests"
-	@echo "  make clean      - Remove all containers, volumes, and images"
+	@echo "Available commands (Dev Environment):"
+	@echo "  make build           - Build all Docker images"
+	@echo "  make build-no-cache  - Build all Docker images without cache"
+	@echo "  make up              - Start all containers in detached mode"
+	@echo "  make stop            - Stop running containers"
+	@echo "  make down            - Stop and remove all containers"
+	@echo "  make restart         - Restart all containers"
+	@echo "  make logs            - View logs from all containers"
+	@echo "  make shell           - Open a shell in the web container"
+	@echo "  make migrate         - Run Django migrations"
+	@echo "  make static          - Collect static files"
+	@echo "  make test            - Run Django tests"
+	@echo "  make clean           - Remove all containers, volumes, and images"
+	@echo "  make celery-logs     - View Celery logs"
+	@echo "  make celery-restart  - Restart Celery services"
+	@echo "  make redis-cli       - Open Redis CLI"
+	@echo "  make redis-monitor   - Monitor Redis"
+	@echo "  make backup          - Backup the database"
+	@echo "  make restore         - Restore the database"
+	@echo "  make watch           - Watch for changes and auto-restart server"
 
 build:
-	docker-compose build
+	$(DC) build
+
+build-no-cache:
+	$(DC) build --no-cache
 
 up:
-	docker-compose up -d
+	$(DC) up -d
 
 stop:
-	docker-compose stop
+	$(DC) stop
 
 down:
-	docker-compose down
+	$(DC) down
 
 restart:
-	docker-compose restart
+	$(DC) restart
 
 logs:
-	docker-compose logs -f
+	$(DC) logs -f
 
 shell:
-	docker-compose exec web python manage.py shell
+	$(DC) exec web python manage.py shell
 
 migrate:
-	docker-compose exec web python manage.py migrate
+	$(DC) exec web python manage.py migrate
 
 static:
-	docker-compose exec web python manage.py collectstatic --noinput
+	$(DC) exec web python manage.py collectstatic --noinput
 
 test:
-	docker-compose exec web python manage.py test
+	$(DC) exec web python manage.py test
 
 clean:
-	docker-compose down -v --rmi all
+	$(DC) down -v --rmi all
 
-# Development specific commands
-dev-build:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml build
-
-dev-up:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-dev-down:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
-
-# Production specific commands
-prod-build:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
-
-prod-up:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-prod-down:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
-
-# Celery specific commands
 celery-logs:
-	docker-compose logs -f celery
+	$(DC) logs -f celery
 
 celery-restart:
-	docker-compose restart celery celery-beat
+	$(DC) restart celery celery-beat
 
-# Redis specific commands
 redis-cli:
-	docker-compose exec redis redis-cli
+	$(DC) exec redis redis-cli
 
 redis-monitor:
-	docker-compose exec redis redis-cli monitor
+	$(DC) exec redis redis-cli monitor
 
-# Database backup and restore
 backup:
-	docker-compose exec web python manage.py dumpdata > backup.json
+	$(DC) exec web python manage.py dumpdata > backup.json
 
 restore:
-	docker-compose exec web python manage.py loaddata backup.json
+	$(DC) exec web python manage.py loaddata backup.json
 
-# Add a command to watch for changes
 watch:
 	@echo "Watching for changes..."
 	watchmedo auto-restart \

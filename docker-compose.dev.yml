@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    command: gunicorn youtube_narration.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - ./media:/app/media
+      - ./data/youtube_narration:/app/data/
+      - .:/app
+    ports:
+      - "8020:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=youtube_narration.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=django-db
+    depends_on:
+      - redis
+      - celery
+      - celery-beat
+
+  celery:
+    build: .
+    command: celery -A youtube_narration worker --loglevel=INFO --concurrency=2
+    volumes:
+      - ./media:/app/media
+      - ./data/youtube_narration:/app/data/
+    environment:
+      - DJANGO_SETTINGS_MODULE=youtube_narration.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=django-db
+      - C_FORCE_ROOT=true
+    depends_on:
+      - redis
+
+  celery-beat:
+    build: .
+    command: celery -A youtube_narration beat --loglevel=INFO
+    volumes:
+      - ./data/youtube_narration:/app/data/
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=youtube_narration.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=django-db
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+      - .:/app
+
+volumes:
+  redis_data: 
+  
